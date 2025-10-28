@@ -1,29 +1,25 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>医師勤務カレンダー</title>
+
 <h1>医師勤務カレンダー</h1>
-<pre id="out">loading...</pre>
-
 <script>
-  // あなたの GAS WebアプリURL（/exec）
-  const GAS_API = 'https://script.google.com/macros/s/XXXXX/exec';
-  const API_KEY = 'YOUR_MINI_KEY'; // GAS 側と合わせる。不要なら '' に
+  // あなたの GAS WebアプリURL をここに貼り付けてください
+  const GAS_API = 'https://script.google.com/macros/s/XXXXXX/exec'; // ← 後で置き換える
 
-  async function main() {
-    const out = document.getElementById('out');
+  async function loadData() {
+    const out = document.createElement('pre');
+    out.textContent = 'Loading...';
+    document.body.appendChild(out);
     try {
       const url = new URL(GAS_API);
-      if (API_KEY) url.searchParams.set('key', API_KEY);
-      url.searchParams.set('t', Date.now()); // キャッシュ回避
-
-      const res = await fetch(url.toString(), { method: 'GET' });
-      if (!res.ok) throw new Error('API error ' + res.status);
+      url.searchParams.set('t', Date.now());
+      const res = await fetch(url);
       const json = await res.json();
-
       out.textContent = JSON.stringify(json, null, 2);
     } catch (e) {
       out.textContent = 'Error: ' + e.message;
     }
   }
-  main();
+  loadData();
 </script>
