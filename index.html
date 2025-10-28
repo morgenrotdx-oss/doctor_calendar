@@ -8,50 +8,75 @@
   .row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
   pre{padding:12px;border:1px solid #ddd;border-radius:6px;overflow:auto}
   button{cursor:pointer}
+  small{color:#666}
 </style>
 
 <h1>Doctor Calendar</h1>
 
 <div class="row">
   <label>Clinic:
-    <input id="clinic" value="001" size="6">
+    <input id="clinic" size="6" inputmode="numeric" pattern="[0-9]{3}">
   </label>
-  <label><input type="checkbox" id="pretty" checked> プリティ</label>
-  <button id="load">読み込み</button>
+  <button id="load">Load</button>
 </div>
-
-<pre id="out">準備中…</pre>
+<small id="meta"></small>
+<pre id="out">Loading...</pre>
 
 <script>
+  // あなたの GAS Webアプリ URL
   const GAS_API = 'https://script.google.com/macros/s/AKfycbyWf9oxetqrRGTBipHJmw29s2_bscP2W-gpcEaThKPYGLWyQosmB-7Eoj4vIksBv5-UMA/exec';
 
+  // URL から ?clinic= を取得（なければ '001'）
+  function getClinicFromURL() {
+    const p = new URLSearchParams(location.search);
+    const v = (p.get('clinic') || '').trim();
+    // 簡易バリデーション：3桁数字のみ許可（必要に応じて調整）
+    return /^\d{3}$/.test(v) ? v : '001';
+  }
+
+  // クリニックIDをURLに反映（履歴は汚さずに置き換え）
+  function setClinicToURL(clinic) {
+    const url = new URL(location.href);
+    url.searchParams.set('clinic', clinic);
+    history.replaceState(null, '', url);
+  }
+
   async function fetchData(clinic) {
-    const out = document.getElementById('out');
+    const out  = document.getElementById('out');
+    const meta = document.getElementById('meta');
     out.textContent = 'Loading...';
+    meta.textContent = `Source: ${GAS_API}?api=1&clinic=${clinic}`;
 
     try {
       const url = new URL(GAS_API);
-      url.searchParams.set('api', '1');      // ← JSONモード
+      url.searchParams.set('api', '1');      // JSONモード
       url.searchParams.set('clinic', clinic);
       url.searchParams.set('t', Date.now()); // キャッシュ回避
 
       const res = await fetch(url.toString(), { method: 'GET' });
       if (!res.ok) throw new Error('API error ' + res.status);
       const json = await res.json();
-
-      const pretty = document.getElementById('pretty').checked;
-      out.textContent = pretty ? JSON.stringify(json, null, 2)
-                               : JSON.stringify(json);
+      out.textContent = JSON.stringify(json, null, 2);
     } catch (e) {
       out.textContent = 'Error: ' + e.message;
     }
   }
 
-  document.getElementById('load').addEventListener('click', () => {
-    const clinic = document.getElementById('clinic').value || '001';
+  // 初期化：URL → 入力欄 → 取得
+  function init() {
+    const clinic = getClinicFromURL();
+    document.getElementById('clinic').value = clinic;
     fetchData(clinic);
+  }
+
+  document.getElementById('load').addEventListener('click', () => {
+    const clinic = (document.getElementById('clinic').value || '').trim();
+    const norm = /^\d{3}$/.test(clinic) ? clinic : '001';
+    document.getElementById('clinic').value = norm;
+    setClinicToURL(norm);  // クリック時にURLも更新
+    fetchData(norm);
   });
 
-  // 初回ロード
-  fetchData('001');
+  // 直接URLを共有すれば、その clinic で開く
+  init();
 </script>
