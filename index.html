@@ -1,18 +1,28 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>医師勤務カレンダー</title>
 
-<h1>Doctor Calendar</h1>
-<label>
-  Clinic:
-  <input id="clinic" value="001">
-</label>
-<button id="load">Load</button>
+<style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;margin:24px}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+  pre{padding:12px;border:1px solid #ddd;border-radius:6px;overflow:auto}
+  button{cursor:pointer}
+</style>
 
-<pre id="out">Ready.</pre>
+<h1>Doctor Calendar</h1>
+
+<div class="row">
+  <label>Clinic:
+    <input id="clinic" value="001" size="6">
+  </label>
+  <label><input type="checkbox" id="pretty" checked> プリティ</label>
+  <button id="load">読み込み</button>
+</div>
+
+<pre id="out">準備中…</pre>
 
 <script>
-  // あなたのGAS WebアプリURL（そのまま使います）
   const GAS_API = 'https://script.google.com/macros/s/AKfycbyWf9oxetqrRGTBipHJmw29s2_bscP2W-gpcEaThKPYGLWyQosmB-7Eoj4vIksBv5-UMA/exec';
 
   async function fetchData(clinic) {
@@ -20,17 +30,18 @@
     out.textContent = 'Loading...';
 
     try {
-      // A案：?api=1 で JSON を返す分岐（GAS側に追加済み前提）
       const url = new URL(GAS_API);
-      url.searchParams.set('api', '1');
+      url.searchParams.set('api', '1');      // ← JSONモード
       url.searchParams.set('clinic', clinic);
       url.searchParams.set('t', Date.now()); // キャッシュ回避
 
       const res = await fetch(url.toString(), { method: 'GET' });
       if (!res.ok) throw new Error('API error ' + res.status);
-
       const json = await res.json();
-      out.textContent = JSON.stringify(json, null, 2);
+
+      const pretty = document.getElementById('pretty').checked;
+      out.textContent = pretty ? JSON.stringify(json, null, 2)
+                               : JSON.stringify(json);
     } catch (e) {
       out.textContent = 'Error: ' + e.message;
     }
@@ -41,6 +52,6 @@
     fetchData(clinic);
   });
 
-  // 初回自動ロード
+  // 初回ロード
   fetchData('001');
 </script>
