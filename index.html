@@ -2,24 +2,45 @@
 <meta charset="utf-8">
 <title>医師勤務カレンダー</title>
 
-<h1>医師勤務カレンダー</h1>
-<script>
-  // あなたの GAS WebアプリURL をここに貼り付けてください
-  const GAS_API = 'https://script.google.com/macros/s/XXXXXX/exec'; // ← 後で置き換える
+<h1>Doctor Calendar</h1>
+<label>
+  Clinic:
+  <input id="clinic" value="001">
+</label>
+<button id="load">Load</button>
 
-  async function loadData() {
-    const out = document.createElement('pre');
+<pre id="out">Ready.</pre>
+
+<script>
+  // あなたのGAS WebアプリURL（そのまま使います）
+  const GAS_API = 'https://script.google.com/macros/s/AKfycbyWf9oxetqrRGTBipHJmw29s2_bscP2W-gpcEaThKPYGLWyQosmB-7Eoj4vIksBv5-UMA/exec';
+
+  async function fetchData(clinic) {
+    const out = document.getElementById('out');
     out.textContent = 'Loading...';
-    document.body.appendChild(out);
+
     try {
+      // A案：?api=1 で JSON を返す分岐（GAS側に追加済み前提）
       const url = new URL(GAS_API);
-      url.searchParams.set('t', Date.now());
-      const res = await fetch(url);
+      url.searchParams.set('api', '1');
+      url.searchParams.set('clinic', clinic);
+      url.searchParams.set('t', Date.now()); // キャッシュ回避
+
+      const res = await fetch(url.toString(), { method: 'GET' });
+      if (!res.ok) throw new Error('API error ' + res.status);
+
       const json = await res.json();
       out.textContent = JSON.stringify(json, null, 2);
     } catch (e) {
       out.textContent = 'Error: ' + e.message;
     }
   }
-  loadData();
+
+  document.getElementById('load').addEventListener('click', () => {
+    const clinic = document.getElementById('clinic').value || '001';
+    fetchData(clinic);
+  });
+
+  // 初回自動ロード
+  fetchData('001');
 </script>
