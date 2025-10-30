@@ -346,14 +346,14 @@ tr.week-row td.holiday {
   box-shadow: 0 0 8px #ff980080;
 }
 
-/* 祝日（＝日付行）の配色を最優先で上書き */
+/* 祝日（日付行）は赤地に白文字で強調 */
 #calendar tr.week-row.date-row td.holiday {
-  background-color: #e6f7ff !important; /* 日付行と同じ水色 */
-  color: #e53935 !important;            /* 文字は赤（白抜き防止） */
+  background: #e53935 !important;  /* 赤地 */
+  color: #fff !important;           /* 白文字 */
   font-weight: bold;
 }
 
-/* 祝日かつ今日のセルは今日ハイライトを優先 */
+/* 祝日かつ「今日」は今日ハイライトを優先 */
 #calendar tr.week-row.date-row td.holiday.today-cell {
   background: #ffb300 !important;
   color: #fff !important;
