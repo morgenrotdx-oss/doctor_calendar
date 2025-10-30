@@ -297,6 +297,19 @@ tr.week-row td.holiday {
   transition: opacity 0.2s;
 }
 
+.loader {
+  position: fixed;
+  inset: 0;
+  display: none;          /* 初期は非表示 */
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(2px);
+  z-index: 99999;
+  font: 600 16px/1.4 system-ui, sans-serif;
+  color: #333;
+}
+.loader.show { display: flex; }
 
 /* 日付行（日付が並ぶ1行目ごと）の土曜・日曜を色分け */
 #calendar tr.date-row td.saturday {
