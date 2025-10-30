@@ -226,36 +226,37 @@ function renderCalendar(){
     const keyEN = `${month+1}/${d}(${JP2EN[tok] || tok})`;
     dayInfo[d] = { tok, keyJP, keyEN };
   }
-  
-  // (a) 日付行（グリッドに合わせて確定位置に描画）
-  const trWeek = document.createElement('tr');
-  trWeek.classList.add('week-row', 'date-row');
-  const tdLabel = document.createElement('td'); tdLabel.textContent = '';
-  trWeek.appendChild(tdLabel);
-
-  weeks[0].forEach((cell, d) => {
-    const td = document.createElement('td');
-    if (cell) {
-      td.textContent = cell.day;
-      if (d === 5) td.classList.add('saturday');
-      if (d === 6) td.classList.add('sunday');
-      const label = `${month + 1}/${cell.day}`;
-      if (holidaySet.has(label)) td.classList.add('holiday');
-      const nowJST = new Date(Date.now() + 9*60*60*1000);
-      if (year === nowJST.getUTCFullYear() && month === nowJST.getUTCMonth() && cell.day === nowJST.getUTCDate()) {
-        td.classList.add('today-cell');
-      }
-    }
-    trWeek.appendChild(td);
-  });
-  newTbody.appendChild(trWeek);
-
-
-  // (b) 各週ごとに “全科で医師0” 判定 → (c) 各診療科行
+  // ★ここから：各週ごとに「日付行→診療科行」をまとめて描画
   weeks.forEach(weekCells => {
-    // その週の dayHasDoctor 判定
-    const dayHasDoctor = {};
+    // --- ① 日付行 ---
+    const trWeek = document.createElement('tr');
+    trWeek.classList.add('week-row', 'date-row');
+    const tdLabel = document.createElement('td'); tdLabel.textContent = '';
+    trWeek.appendChild(tdLabel);
+  
     weekCells.forEach((cell, d) => {
+      const td = document.createElement('td');
+      if (cell) {
+        td.textContent = cell.day;
+        if (d === 5) td.classList.add('saturday');
+        if (d === 6) td.classList.add('sunday');
+        const label = `${month + 1}/${cell.day}`;
+        if (holidaySet.has(label)) td.classList.add('holiday');
+        const nowJST = new Date(Date.now() + 9*60*60*1000);
+        if (year === nowJST.getUTCFullYear() &&
+            month === nowJST.getUTCMonth() &&
+            cell.day === nowJST.getUTCDate()) {
+          td.classList.add('today-cell');
+        }
+      }
+      trWeek.appendChild(td);
+    });
+    newTbody.appendChild(trWeek);
+  
+    // --- ② その週の診療科行 ---
+    // 週内 “全科で医師0” 判定
+    const dayHasDoctor = {};
+    weekCells.forEach(cell => {
       if (!cell) return;
       const day = cell.day, tok = cell.tok;
       const keyJP = `${month+1}/${day}(${tok})`;
@@ -266,23 +267,23 @@ function renderCalendar(){
         return !!disp && disp !== '休診';
       });
     });
-
-    // 診療科ごとに行を描画
+  
+    // 診療科ごと行
     rooms.forEach((room, rIndex) => {
       const trRoom = document.createElement('tr');
       const tdRoom = document.createElement('td');
       tdRoom.textContent = room;
       trRoom.appendChild(tdRoom);
-
-      weekCells.forEach((cell, d) => {
+  
+      weekCells.forEach((cell) => {
         const td = document.createElement('td');
-
-        if (!cell) { trRoom.appendChild(td); return; } // 月外は空セル
+        if (!cell) { trRoom.appendChild(td); return; }
+  
         const day = cell.day, tok = cell.tok;
         const keyJP = `${month+1}/${day}(${tok})`;
         const keyEN = `${month+1}/${day}(${JP2EN[tok] || tok})`;
         const entry = (schedule[room]?.[keyJP]) || (schedule[room]?.[keyEN]);
-
+  
         if (!dayHasDoctor[day]) {
           if (rIndex === 0) {
             td.textContent = '休診日';
@@ -291,20 +292,18 @@ function renderCalendar(){
             td.rowSpan = rooms.length;
             trRoom.appendChild(td);
           }
-          return; // 他の診療科はこの列セルを追加しない（rowSpan に吸収）
+          return; // 他科は列セルを追加しない（rowSpanで吸収）
         }
-
+  
         if (entry && (entry.name || entry.displayName)) {
           const t = `${entry.timeFrom || ''}${entry.timeTo ? '～' + entry.timeTo : ''}`;
           td.innerHTML =
             `<div><span>${t}</span></div>
              <div><span${entry.sex==='女' ? ' class="female"':''}>${entry.displayName || entry.name}</span>${entry.tongueMark ? ` <span title="舌下">${entry.tongueMark}</span>`:''}</div>`;
-        
           if (entry.displayName === '休診') td.classList.add('kyushin-cell');
           if (entry.displayName === '調整中') td.classList.add('cyousei-cell');
-        
+  
           if (entry.displayName !== '休診') {
-            // ← リスナーは付けない。代わりに dataset を埋める
             td.classList.add('has-entry');
             td.style.cursor = 'zoom-in';
             td.dataset.date   = `${month+1}/${day}`;
@@ -320,9 +319,11 @@ function renderCalendar(){
         }
         trRoom.appendChild(td);
       });
+  
       newTbody.appendChild(trRoom);
     });
   });
+  
   oldTbody.replaceWith(newTbody);
 }
 
@@ -420,18 +421,18 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cal && !cal.__modalDelegated) {
     cal.addEventListener('click', (ev) => {
       const td = ev.target.closest('td.has-entry');
-      if (!td || !cal.contains(td)) return;
+      if (!td) return;
       showCellModal({
         date:   td.dataset.date,
-        dept:   td.dataset.dept || '',
-        time:   td.dataset.time || '',
-        name:   td.dataset.name || '',
-        tongue: td.dataset.tongue || ''
+        dept:   td.dataset.dept,
+        time:   td.dataset.time,
+        name:   td.dataset.name,
+        tongue: td.dataset.tongue
       });
     });
-    cal.__modalDelegated = true; // 二重登録防止
+    cal.__modalDelegated = true;  // 一度だけ
   }
-
+  
   // 初回ロード
   fetchSchedule().catch(e => alert(e));
 });
