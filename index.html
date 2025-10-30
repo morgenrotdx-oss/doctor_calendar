@@ -45,11 +45,11 @@
     const out  = document.getElementById('out');
     const meta = document.getElementById('meta');
     out.textContent = 'Loading...';
-    meta.textContent = `Source: ${GAS_API}?api=1&clinic=${clinic}`;
+    meta.textContent = `Source: ${GAS_API}?action=schedule&clinic=${clinic}`;
 
     try {
       const url = new URL(GAS_API);
-      url.searchParams.set('api', '1');      // JSONモード
+      url.searchParams.set('action', 'schedule');
       url.searchParams.set('clinic', clinic);
       url.searchParams.set('t', Date.now()); // キャッシュ回避
 
