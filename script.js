@@ -143,6 +143,7 @@ function normalizeWeekChar(x) {
   const t = String(x).trim();
   return EN2JP[t] || t[0];  // "Wed"→"水" / "水"→"水"
 }
+
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
   // 0) monthStr を保証
@@ -156,8 +157,9 @@ function renderCalendar(){
 
   // 2) サーバ基準の曜日テーブルを作る
   const youbiMap = inferWeekcharMapForMonth(year, month);
-  const youbiOf = (d) => youbiMap.get(d) ?? JP2EN[jpDowJST(year, month, d)] ?? jpDowJST(year, month, d);
-
+  // ← ここを差し替え
+  const youbiOf = (d) => normalizeWeekChar(youbiMap.get(d) || jpDowJST(year, month, d));
+  
  // 3) 1日の曜日が取れていれば列開始をサーバ基準に上書き
   const y1 = youbiMap.get(1);
   if (y1 != null && WK_INDEX[y1] != null) {
@@ -201,19 +203,24 @@ function renderCalendar(){
     }
     tbody.appendChild(trWeek);
 
-    // (b) 週内 “全科で医師0” 判定（キーはサーバの曜日！）
+    // (b) 週内 “全科で医師0” 判定（キーは JP/EN 両対応）
     const dayHasDoctor = {};
     for (let d = 0; d < 7; d++) {
       const dayNum = w * 7 + d - firstWeekday + 1;
       if (dayNum < 1 || dayNum > totalDays) continue;
-      const key = `${month + 1}/${dayNum}(${youbiOf(dayNum)})`;
+    
+      const tok   = youbiOf(dayNum); // '水' など
+      const keyJP = `${month + 1}/${dayNum}(${tok})`;
+      const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;
+    
       dayHasDoctor[dayNum] = rooms.some(room => {
-        const e = schedule[room]?.[key];
-        const disp = e?.displayName || e?.name || '';
+        const obj = schedule[room] || {};
+        const entry = obj[keyJP] || obj[keyEN];
+        const disp  = entry?.displayName || entry?.name || '';
         return !!disp && disp !== '休診';
       });
     }
-
+    
     // (c) 診療科行（キーはサーバの曜日！）
     rooms.forEach((room, rIndex) => {
       const trRoom = document.createElement('tr');
@@ -224,15 +231,14 @@ function renderCalendar(){
         const td = document.createElement('td');
         const dayNum = w * 7 + d - firstWeekday + 1;
         if (dayNum < 1 || dayNum > totalDays) continue;
-
-        const key = `${month + 1}/${dayNum}(${youbiOf(dayNum)})`;
-        const e = schedule[room]?.[key];
-
-        const tok   = youbiOf(dayNum);                         // 'Wed' or '月'
-        const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;  // 'Wed'
-        const keyJP = `${month + 1}/${dayNum}(${EN2JP[tok] || tok})`;  // '水'
-        const e = schedule[room]?.[keyEN] || schedule[room]?.[keyJP];
-        
+      
+        const tok   = youbiOf(dayNum); // '水'
+        const keyJP = `${month + 1}/${dayNum}(${tok})`;
+        const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;
+      
+        // ★ ここを1回の宣言に統一（重複していた const e を排除）
+        const entry = (schedule[room]?.[keyJP]) || (schedule[room]?.[keyEN]);
+      
         if (!dayHasDoctor[dayNum]) {
           if (rIndex === 0) {
             td.textContent = '休診日';
@@ -243,21 +249,25 @@ function renderCalendar(){
           }
           continue;
         }
-
-        if (e && (e.name || e.displayName)) {
-          const t = `${e.timeFrom || ''}${e.timeTo ? '～'+e.timeTo : ''}`;
+      
+        if (entry && (entry.name || entry.displayName)) {
+          const t = `${entry.timeFrom || ''}${entry.timeTo ? '～' + entry.timeTo : ''}`;
           td.innerHTML =
             `<div><span>${t}</span></div>
-             <div><span${e.sex==='女' ? ' class="female"':''}>${e.displayName || e.name}</span>${e.tongueMark ? ` <span title="舌下">${e.tongueMark}</span>`:''}</div>`;
-          if (e.displayName === '休診') td.classList.add('kyushin-cell');
-          if (e.displayName === '調整中') td.classList.add('cyousei-cell');
-          if (e.displayName !== '休診') {
+             <div><span${entry.sex==='女' ? ' class="female"':''}>${entry.displayName || entry.name}</span>${entry.tongueMark ? ` <span title="舌下">${entry.tongueMark}</span>`:''}</div>`;
+      
+          if (entry.displayName === '休診') td.classList.add('kyushin-cell');
+          if (entry.displayName === '調整中') td.classList.add('cyousei-cell');
+      
+          if (entry.displayName !== '休診') {
             td.style.cursor = 'zoom-in';
             td.addEventListener('click', () => {
               showCellModal({
                 date: `${month+1}/${dayNum}`,
-                dept: room, time: t,
-                name: e.displayName || e.name, tongue: e.tongueMark
+                dept: room,
+                time: t,
+                name: entry.displayName || entry.name,
+                tongue: entry.tongueMark
               });
             });
           }
@@ -266,6 +276,7 @@ function renderCalendar(){
           if (!dayHasDoctor[dayNum]) td.classList.add('kyushin-cell');
           td.setAttribute('aria-label', `${month+1}/${dayNum} ${room} ${td.textContent}`);
         }
+      
         trRoom.appendChild(td);
       }
       tbody.appendChild(trRoom);
