@@ -230,8 +230,11 @@ function renderCalendar(){
       for (let d = 0; d < 7; d++) {
         const td = document.createElement('td');
         const dayNum = w * 7 + d - firstWeekday + 1;
-        if (dayNum < 1 || dayNum > totalDays) continue;
-      
+        // ★ 月の外は「空<td>をappendしてからcontinue」
+        if (dayNum < 1 || dayNum > totalDays) {
+          trRoom.appendChild(td);   // 空セルを入れる（クラス付けたければ td.classList.add('empty') など）
+          continue;
+        }
         const tok   = youbiOf(dayNum); // '水'
         const keyJP = `${month + 1}/${dayNum}(${tok})`;
         const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;
