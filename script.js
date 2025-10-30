@@ -36,6 +36,10 @@ function jpDowJST(y, m0, d) {
 
 // === 追加：JSTで「月曜始まりの月情報」を返す（YYYY-MM版） ===
 function calcMonthInfoFromYYYYMM_JST(monthStr){
+  // ★ ガード：null/undefined/不正フォーマットなら今日の年月で補正
+  if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) {
+    monthStr = yyyymm(new Date());
+  }
   const [yy, mm] = monthStr.split('-').map(Number);
   const year  = yy;
   const month = mm - 1; // 0-11
@@ -86,6 +90,9 @@ function renderHeader() {
 
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
+  if (!state.monthStr || !/^\d{4}-\d{2}$/.test(state.monthStr)) {
+    state.monthStr = yyyymm(new Date());
+  }
   // 1) まずは通常どおり JST で計算
   const { year, month, firstWeekday, totalDays, numWeeks } =
     calcMonthInfoFromYYYYMM_JST(state.monthStr);
