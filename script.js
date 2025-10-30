@@ -56,20 +56,21 @@ function calcMonthInfoFromYYYYMM_JST(monthStr){
 // ★新規：サーバの schedule を走査して “その月の日→曜日1文字” を作る
 function inferWeekcharMapForMonth(year, month) {
   const m1 = month + 1;
-  const map = new Map(); // key: day(1-31) -> '月'..'日'
-  const tryRooms = rooms || [];
-  for (const r of tryRooms) {
+  const map = new Map(); // day(1-31) -> '月'..'日'
+  for (const r of (rooms || [])) {
     const obj = schedule[r];
     if (!obj) continue;
     for (const k of Object.keys(obj)) {
-      // "10/2(木)" のようなキーだけを対象
+      // "10/2(木)" も "10/2(Wed)" も拾う
       const m = k.match(/^(\d{1,2})\/(\d{1,2})\(([^)]+)\)$/);
       if (!m) continue;
-      const mm = Number(m[1]), dd = Number(m[2]), youbi = m[3];
-      if (mm === m1 && !map.has(dd)) map.set(dd, youbi);
+      const mm = Number(m[1]), dd = Number(m[2]), raw = m[3];
+      if (mm !== m1 || map.has(dd)) continue;
+      const youbi = normalizeWeekChar(raw);
+      if (youbi) map.set(dd, youbi);
     }
   }
-  return map; // その月に1つもデータが無い日は未定義のまま
+  return map;
 }
 
 function getClinicFromURL() {
@@ -136,6 +137,12 @@ function getFirstWeekdayFromServer(month0) {
   return (wchar && wkMap[wchar] !== undefined) ? wkMap[wchar] : null;
 }
 
+// 週文字を日本語1文字に正規化（"Wed"→"水", "水"→"水"）
+function normalizeWeekChar(x) {
+  if (!x) return null;
+  const t = String(x).trim();
+  return EN2JP[t] || t[0];  // "Wed"→"水" / "水"→"水"
+}
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
   // 0) monthStr を保証
@@ -151,12 +158,12 @@ function renderCalendar(){
   const youbiMap = inferWeekcharMapForMonth(year, month);
   const youbiOf = (d) => youbiMap.get(d) ?? JP2EN[jpDowJST(year, month, d)] ?? jpDowJST(year, month, d);
 
-  // 3) “1日の曜日” がサーバから取れたら firstWeekday を上書き（列開始を一致）
+ // 3) 1日の曜日が取れていれば列開始をサーバ基準に上書き
   const y1 = youbiMap.get(1);
-  if (y1 && WK_INDEX[y1] !== undefined) {
+  if (y1 != null && WK_INDEX[y1] != null) {
     firstWeekday = WK_INDEX[y1];
   }
-
+  
   // 4) 以降は従来通りだが、セルキー生成は必ず youbiOf(day) を使う
   updateTitle(year, month);
   clearTable();
