@@ -82,6 +82,7 @@ function renderCalendar(){
     const trDate = document.createElement('tr');
     trDate.className = 'date-row';
     trDate.appendChild(document.createElement('td'));
+    const weekBandClass = 'week-band';
 
     for(let d=0; d<7; d++){
       const td = document.createElement('td');
@@ -119,6 +120,7 @@ function renderCalendar(){
       const tr = document.createElement('tr');
       const tdRoom = document.createElement('td');
       tdRoom.textContent = room;
+      tdRoom.classList.add(weekBandClass); 
       tr.appendChild(tdRoom);
 
       for(let d=0; d<7; d++){
