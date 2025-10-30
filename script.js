@@ -39,8 +39,14 @@ let state = {
 // ===== Util =====
 // ===== Loader control =====
 const loaderEl = document.getElementById('loader');
-function showLoader(){ loaderEl && loaderEl.classList.add('show'); }
-function hideLoader(){ loaderEl && loaderEl.classList.remove('show'); }
+function showLoader(){
+  const el = document.getElementById('loader');
+  if (el) el.classList.add('show');
+}
+function hideLoader(){
+  const el = document.getElementById('loader');
+  if (el) el.classList.remove('show');
+}
 
 // 連打防止用：矢印ボタンの活性/非活性をまとめて制御
 function setNavEnabled(enabled){
@@ -209,8 +215,9 @@ function renderCalendar(){
   renderHeader();
 
   const holidaySet = new Set((holidays || []).map(h => h.split('(')[0]));
-  const tbody = document.querySelector('#calendar tbody');
-
+  const oldTbody = document.querySelector('#calendar tbody');
+  const newTbody = document.createElement('tbody');
+  
   // ★ 追加：その月の日⇒曜日/JP/EN/キー を一括プリ計算（1回だけ）
   const dayInfo = []; // 1..totalDays
   for (let d = 1; d <= totalDays; d++) {
@@ -241,7 +248,8 @@ function renderCalendar(){
     }
     trWeek.appendChild(td);
   });
-  tbody.appendChild(trWeek);
+  newTbody.appendChild(trWeek);
+
 
   // (b) 各週ごとに “全科で医師0” 判定 → (c) 各診療科行
   weeks.forEach(weekCells => {
@@ -291,17 +299,19 @@ function renderCalendar(){
           td.innerHTML =
             `<div><span>${t}</span></div>
              <div><span${entry.sex==='女' ? ' class="female"':''}>${entry.displayName || entry.name}</span>${entry.tongueMark ? ` <span title="舌下">${entry.tongueMark}</span>`:''}</div>`;
+        
           if (entry.displayName === '休診') td.classList.add('kyushin-cell');
           if (entry.displayName === '調整中') td.classList.add('cyousei-cell');
+        
           if (entry.displayName !== '休診') {
+            // ← リスナーは付けない。代わりに dataset を埋める
+            td.classList.add('has-entry');
             td.style.cursor = 'zoom-in';
-            td.addEventListener('click', () => {
-              showCellModal({
-                date: `${month+1}/${day}`,
-                dept: room, time: t,
-                name: entry.displayName || entry.name, tongue: entry.tongueMark
-              });
-            });
+            td.dataset.date   = `${month+1}/${day}`;
+            td.dataset.dept   = room;
+            td.dataset.time   = t;
+            td.dataset.name   = entry.displayName || entry.name;
+            td.dataset.tongue = entry.tongueMark || '';
           }
         } else {
           td.textContent = dayHasDoctor[day] ? '−' : '休診';
@@ -310,10 +320,10 @@ function renderCalendar(){
         }
         trRoom.appendChild(td);
       });
-
-      tbody.appendChild(trRoom);
+      newTbody.appendChild(trRoom);
     });
   });
+  oldTbody.replaceWith(newTbody);
 }
 
 // モーダル（GAS版と同DOM/クラス）
@@ -391,7 +401,7 @@ async function fetchSchedule(){
 document.addEventListener('DOMContentLoaded', () => {
   clinicCode     = getClinicFromURL();
   setClinicToURL(clinicCode);
-  state.monthStr = yyyymm(new Date());             // ★初期は今月
+  state.monthStr = yyyymm(new Date()); // 初期は今月
 
   // 月移動：state.monthStr を直接変更
   document.getElementById('prevMonth').onclick = ()=>{
@@ -405,7 +415,24 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchSchedule().catch(e => alert(e));
   };
 
-  // 初回
+  // === (2-3) セルクリックのイベント委譲（#calendar に一度だけ）===
+  const cal = document.getElementById('calendar');
+  if (cal && !cal.__modalDelegated) {
+    cal.addEventListener('click', (ev) => {
+      const td = ev.target.closest('td.has-entry');
+      if (!td || !cal.contains(td)) return;
+      showCellModal({
+        date:   td.dataset.date,
+        dept:   td.dataset.dept || '',
+        time:   td.dataset.time || '',
+        name:   td.dataset.name || '',
+        tongue: td.dataset.tongue || ''
+      });
+    });
+    cal.__modalDelegated = true; // 二重登録防止
+  }
+
+  // 初回ロード
   fetchSchedule().catch(e => alert(e));
 });
 
