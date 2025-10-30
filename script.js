@@ -24,6 +24,7 @@ let clinicName = "";        // APIから取得
 let minYearMonth = "";      // "YYYY-MM"
 let maxYearMonth = "";      // "YYYY-MM"
 let dates = [];
+let isLoading = false;
 
 let state = {
   monthStr: null,   // ← これを使う
@@ -84,6 +85,25 @@ function setClinicToURL(v) {
   history.replaceState(null, '', u);
 }
 function yyyymm(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+
+function showLoader(){ 
+  isLoading = true;
+  document.getElementById('loader')?.classList.add('show');
+  updateNavDisabled();
+}
+function hideLoader(){ 
+  isLoading = false;
+  document.getElementById('loader')?.classList.remove('show');
+  updateNavDisabled();
+}
+function updateNavDisabled(){
+  const prevBtn = document.getElementById('prevMonth');
+  const nextBtn = document.getElementById('nextMonth');
+  const atMin = !!minYearMonth && (state.monthStr <= minYearMonth);
+  const atMax = !!maxYearMonth && (state.monthStr >= maxYearMonth);
+  if (prevBtn) prevBtn.disabled = isLoading || atMin;
+  if (nextBtn) nextBtn.disabled = isLoading || atMax;
+}
 
 // ===== 表示系（GAS版と同じ関数名/構造） =====
 function updateTitle(year, month) {
@@ -317,40 +337,43 @@ function showCellModal({ date, dept, time, name, tongue }) {
 
 // ===== データ取得（google.script.run → fetch に置換） =====
 async function fetchSchedule(){
+  // 二重実行ガード（連打対策：進行中は無視）
+  if (isLoading) return;
+
   const url = new URL(GAS_API);
   url.searchParams.set('action', 'schedule');
   url.searchParams.set('clinic', clinicCode);
   url.searchParams.set('month', state.monthStr); // ★ここ重要
   url.searchParams.set('t', Date.now());
-  console.log('API URL:', url.toString()); 
 
-  const res = await fetch(url.toString());
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'API error');
+  showLoader();                     // ← 追加
+  try {
+    const res = await fetch(url.toString());
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'API error');
+  
+    clinicName   = json.clinicName || '';
+    const data   = json.data || {};
+    rooms        = (data.rooms || []).slice();
+    schedule     = data.schedule || {};
+    holidays     = data.holidays || [];
+    minYearMonth = data.minYearMonth || "";
+    maxYearMonth = data.maxYearMonth || "";
+    dates        = data.dates || [];
+  
+    // 並び順
+    rooms.sort((a,b)=>{
+      const ia = DEPT_ORDER.indexOf(a), ib = DEPT_ORDER.indexOf(b);
+      if (ia===-1 && ib===-1) return a.localeCompare(b,'ja');
+      if (ia===-1) return 1; if (ib===-1) return -1;
+      return ia - ib;
+    });
 
-  clinicName   = json.clinicName || '';
-  const data   = json.data || {};
-  rooms        = (data.rooms || []).slice();
-  schedule     = data.schedule || {};
-  holidays     = data.holidays || [];
-  minYearMonth = data.minYearMonth || "";
-  maxYearMonth = data.maxYearMonth || "";
-  dates        = data.dates || [];
-
-  // 並び順
-  rooms.sort((a,b)=>{
-    const ia = DEPT_ORDER.indexOf(a), ib = DEPT_ORDER.indexOf(b);
-    if (ia===-1 && ib===-1) return a.localeCompare(b,'ja');
-    if (ia===-1) return 1; if (ib===-1) return -1;
-    return ia - ib;
-  });
-
-  // 前後ボタンの活性/非活性
-  document.getElementById('prevMonth').disabled = !!minYearMonth && (state.monthStr <= minYearMonth);
-  document.getElementById('nextMonth').disabled = !!maxYearMonth && (state.monthStr >= maxYearMonth);
-
-  renderCalendar();
-  window.__dumpKeyMatch && window.__dumpKeyMatch();
+    renderCalendar();
+  } finally {
+    hideLoader();
+    window.__dumpKeyMatch && window.__dumpKeyMatch();
+  }
 }
 
 // ===== 起動処理（GAS版の流儀に合わせた最小UI） =====
