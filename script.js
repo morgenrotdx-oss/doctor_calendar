@@ -257,6 +257,7 @@ async function fetchSchedule(){
   url.searchParams.set('clinic', clinicCode);
   url.searchParams.set('month', state.monthStr); // ★ここ重要
   url.searchParams.set('t', Date.now());
+  console.log('API URL:', url.toString()); 
 
   const res = await fetch(url.toString());
   const json = await res.json();
