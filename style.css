@@ -346,10 +346,11 @@ tr.week-row td.holiday {
   box-shadow: 0 0 8px #ff980080;
 }
 
-/* 祝日（日付行）は赤地に白文字で強調 */
+/* === 祝日（日付行）は赤地＋白文字に最優先で上書き === */
 #calendar tr.week-row.date-row td.holiday {
-  background: #e53935 !important;  /* 赤地 */
-  color: #fff !important;           /* 白文字 */
+  background: #e53935 !important;        /* 赤地 */
+  background-color: #e53935 !important;   /* 念のため明示 */
+  color: #fff !important;                 /* 白文字 */
   font-weight: bold;
 }
 
