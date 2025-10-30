@@ -18,8 +18,8 @@ let state = {
 };
 
 // ===== Util =====
-function jpDowByDate(y, m0, d) {
-  return ["日","月","火","水","木","金","土"][ new Date(y, m0, d).getDay() ];
+function jpDow(dt) {
+  return ["日","月","火","水","木","金","土"][ dt.getDay() ];
 }
 
 function getClinicFromURL() {
@@ -53,14 +53,15 @@ function renderHeader() {
 function clearBody(){ document.querySelector('#calendar tbody').innerHTML=''; }
 
 function calcMonthInfo(monthStr){
-  const [Y,M] = (monthStr || yyyymm(new Date())).split('-').map(Number);
-  const year = Y, month = M-1;
-  const firstDay = new Date(year, month, 1);
-  const lastDay  = new Date(year, month+1, 0);
-  let firstWeekday = firstDay.getDay();              // 日=0..土=6
-  firstWeekday = (firstWeekday===0)?6:firstWeekday-1;// 月曜起点 0..6
-  const totalDays = lastDay.getDate();
-  const numWeeks  = Math.ceil((firstWeekday + totalDays)/7);
+  const [yy, mm] = monthStr.split('-').map(Number);
+  const year = yy, month = mm - 1;                    // 0-11
+  const first = new Date(year, month, 1);
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  // 日曜(0)→6, 月曜(1)→0, … の形に変換（＝月曜始まり）
+  const firstWeekday = (first.getDay() + 6) % 7;
+
+  const numWeeks = Math.ceil((firstWeekday + totalDays) / 7);
   return { year, month, firstWeekday, totalDays, numWeeks };
 }
 
