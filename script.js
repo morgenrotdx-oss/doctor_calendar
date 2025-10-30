@@ -251,7 +251,6 @@ async function fetchSchedule(){
 
   clinicName   = json.clinicName || '';
   const data   = json.data || {};
-  dates        = data.dates || [];
   rooms        = (data.rooms || []).slice();
   schedule     = data.schedule || {};
   holidays     = data.holidays || [];
