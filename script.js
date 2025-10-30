@@ -4,7 +4,10 @@ const GAS_API = 'https://script.google.com/macros/s/AKfycbyWf9oxetqrRGTBipHJmw29
 // ===== 既存GASのJSと同じ定義 =====
 const WEEKDAYS = ["月","火","水","木","金","土","日"];
 // 曜日1文字 -> 月曜起点の列番号
-const WK_INDEX = { '月':0, '火':1, '水':2, '木':3, '金':4, '土':5, '日':6 };
+const WK_INDEX = { '月':0,'火':1,'水':2,'木':3,'金':4,'土':5,'日':6,
+                   'Mon':0,'Tue':1,'Wed':2,'Thu':3,'Fri':4,'Sat':5,'Sun':6 };
+const JP2EN = { '月':'Mon','火':'Tue','水':'Wed','木':'Thu','金':'Fri','土':'Sat','日':'Sun' };
+const EN2JP = { 'Mon':'月','Tue':'火','Wed':'水','Thu':'木','Fri':'金','Sat':'土','Sun':'日' };
 
 const DEPT_ORDER = [
   "小児科１診","小児科２診","小児科３診",
@@ -60,7 +63,7 @@ function inferWeekcharMapForMonth(year, month) {
     if (!obj) continue;
     for (const k of Object.keys(obj)) {
       // "10/2(木)" のようなキーだけを対象
-      const m = k.match(/^(\d{1,2})\/(\d{1,2})\((.)\)$/);
+      const m = k.match(/^(\d{1,2})\/(\d{1,2})\(([^)]+)\)$/);
       if (!m) continue;
       const mm = Number(m[1]), dd = Number(m[2]), youbi = m[3];
       if (mm === m1 && !map.has(dd)) map.set(dd, youbi);
@@ -146,7 +149,7 @@ function renderCalendar(){
 
   // 2) サーバ基準の曜日テーブルを作る
   const youbiMap = inferWeekcharMapForMonth(year, month);
-  const youbiOf = (d) => youbiMap.get(d) ?? jpDowJST(year, month, d);
+  const youbiOf = (d) => youbiMap.get(d) ?? JP2EN[jpDowJST(year, month, d)] ?? jpDowJST(year, month, d);
 
   // 3) “1日の曜日” がサーバから取れたら firstWeekday を上書き（列開始を一致）
   const y1 = youbiMap.get(1);
@@ -218,6 +221,11 @@ function renderCalendar(){
         const key = `${month + 1}/${dayNum}(${youbiOf(dayNum)})`;
         const e = schedule[room]?.[key];
 
+        const tok   = youbiOf(dayNum);                         // 'Wed' or '月'
+        const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;  // 'Wed'
+        const keyJP = `${month + 1}/${dayNum}(${EN2JP[tok] || tok})`;  // '水'
+        const e = schedule[room]?.[keyEN] || schedule[room]?.[keyJP];
+        
         if (!dayHasDoctor[dayNum]) {
           if (rIndex === 0) {
             td.textContent = '休診日';
@@ -356,7 +364,7 @@ window.__dumpKeyMatch = function(){
   const {year,month,firstWeekday,totalDays} = calcMonthInfoFromYYYYMM_JST(state.monthStr);
   const ym = `${year}-${String(month+1).padStart(2,'0')}`;
   const youbiMap = inferWeekcharMapForMonth(year, month);
-  const youbiOf = (d)=> youbiMap.get(d) ?? jpDowJST(year,month,d);
+  const youbiOf = (d) => youbiMap.get(d) ?? JP2EN[jpDowJST(year, month, d)] ?? jpDowJST(year, month, d);
 
   const lines = [];
   lines.push(`[client] ym=${ym} firstWeekday=${firstWeekday} totalDays=${totalDays}`);
