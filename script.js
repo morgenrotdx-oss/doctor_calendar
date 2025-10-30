@@ -88,6 +88,35 @@ function renderHeader() {
   document.querySelector('#calendar thead').appendChild(headRow);
 }
 
+// サーバ(schedule)のキーから曜日文字を抽出するヘルパー
+function getWeekCharFromServer(month0, day) {
+  if (!rooms || rooms.length === 0) return null;
+  const m = month0 + 1; // 表示上の月(1-12)
+  // 代表で rooms[0] を見る（見つからなければ他の科も走査）
+  const tryRooms = [rooms[0], ...rooms.slice(1)];
+  for (const r of tryRooms) {
+    const obj = schedule[r];
+    if (!obj) continue;
+    // "10/2(" のような prefix で一致するキーを探す
+    const prefix = `${m}/${day}(`;
+    for (const k of Object.keys(obj)) {
+      if (k.startsWith(prefix)) {
+        const idx = k.indexOf('(');
+        const wk  = k[idx + 1];         // '月' など 1 文字
+        return wk || null;
+      }
+    }
+  }
+  return null;
+}
+
+// サーバ(schedule)のキーから「今月1日の開始列(0=月…6=日)」を推定
+function getFirstWeekdayFromServer(month0) {
+  const wkMap = { '月':0,'火':1,'水':2,'木':3,'金':4,'土':5,'日':6 };
+  const wchar = getWeekCharFromServer(month0, 1); // 1日分だけ見る
+  return (wchar && wkMap[wchar] !== undefined) ? wkMap[wchar] : null;
+}
+
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
   if (!state.monthStr || !/^\d{4}-\d{2}$/.test(state.monthStr)) {
