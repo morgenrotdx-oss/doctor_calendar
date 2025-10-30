@@ -2,88 +2,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>医師勤務カレンダー</title>
+<link rel="stylesheet" href="./style.css">
 
-<style>
-  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;margin:24px}
-  .row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
-  pre{padding:12px;border:1px solid #ddd;border-radius:6px;overflow:auto}
-  button{cursor:pointer}
-  small{color:#666}
-</style>
+<header class="page-head">
+  <h1>Doctor Calendar</h1>
+  <div class="controls">
+    <label>Clinic:
+      <input id="clinicInput" size="6" inputmode="numeric" pattern="[0-9]{3}">
+    </label>
+    <button id="reloadBtn">再読込</button>
+  </div>
+  <div class="month-nav">
+    <button id="prevMonth">◀</button>
+    <h2 id="tableTitle">Loading…</h2>
+    <button id="nextMonth">▶</button>
+  </div>
+  <small id="meta"></small>
+</header>
 
-<h1>Doctor Calendar</h1>
-
-<div class="row">
-  <label>Clinic:
-    <input id="clinic" size="6" inputmode="numeric" pattern="[0-9]{3}">
-  </label>
-  <button id="load">Load</button>
+<div class="calendar-container">
+  <table id="calendar">
+    <thead></thead>
+    <tbody></tbody>
+  </table>
 </div>
-<small id="meta"></small>
-<pre id="out">Loading...</pre>
 
-<script>
-  // あなたの GAS Webアプリ URL
-  const GAS_API = 'https://script.google.com/macros/s/AKfycbyWf9oxetqrRGTBipHJmw29s2_bscP2W-gpcEaThKPYGLWyQosmB-7Eoj4vIksBv5-UMA/exec';
+<p class="note">
+  ※ 黒=男性・赤=女性　※ ◇/♦=舌下可　※ 灰=休診
+</p>
 
-  // URL から ?clinic= を取得（なければ '001'）
-  function getClinicFromURL() {
-    const p = new URLSearchParams(location.search);
-    const v = (p.get('clinic') || '').trim();
-    // 簡易バリデーション：3桁数字のみ許可（必要に応じて調整）
-    return /^\d{3}$/.test(v) ? v : '001';
-  }
-
-  // クリニックIDをURLに反映（履歴は汚さずに置き換え）
-  function setClinicToURL(clinic) {
-    const url = new URL(location.href);
-    url.searchParams.set('clinic', clinic);
-    history.replaceState(null, '', url);
-  }
-
-  // ここに置く（fetchDataより上）
-  function getMonthFromURL() {
-    const p = new URLSearchParams(location.search);
-    const v = (p.get('month') || '').trim();
-    return /^\d{4}-\d{2}$/.test(v) ? v : new Date().toISOString().slice(0,7); // "YYYY-MM"
-  }
-
-  async function fetchData(clinic) {
-    const out  = document.getElementById('out');
-    const meta = document.getElementById('meta');
-    out.textContent = 'Loading...';
-    meta.textContent = `Source: ${GAS_API}?action=schedule&clinic=${clinic}`;
-
-    try {
-      const url = new URL(GAS_API);
-      url.searchParams.set('action', 'schedule');
-      url.searchParams.set('clinic', clinic);
-      url.searchParams.set('t', Date.now()); // キャッシュ回避
-
-      const res = await fetch(url.toString(), { method: 'GET' });
-      if (!res.ok) throw new Error('API error ' + res.status);
-      const json = await res.json();
-      out.textContent = JSON.stringify(json, null, 2);
-    } catch (e) {
-      out.textContent = 'Error: ' + e.message;
-    }
-  }
-
-  // 初期化：URL → 入力欄 → 取得
-  function init() {
-    const clinic = getClinicFromURL();
-    document.getElementById('clinic').value = clinic;
-    fetchData(clinic);
-  }
-
-  document.getElementById('load').addEventListener('click', () => {
-    const clinic = (document.getElementById('clinic').value || '').trim();
-    const norm = /^\d{3}$/.test(clinic) ? clinic : '001';
-    document.getElementById('clinic').value = norm;
-    setClinicToURL(norm);  // クリック時にURLも更新
-    fetchData(norm);
-  });
-
-  // 直接URLを共有すれば、その clinic で開く
-  init();
-</script>
+<script src="./script.js"></script>
