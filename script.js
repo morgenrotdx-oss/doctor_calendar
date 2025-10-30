@@ -170,33 +170,34 @@ function normalizeWeekChar(x) {
 
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
-  // 0) monthStr を保証
+  // 0) monthStr の保証
   if (!state.monthStr || !/^\d{4}-\d{2}$/.test(state.monthStr)) {
     state.monthStr = yyyymm(new Date());
   }
 
-  // 1) JSTで基本形を算出
+  // 1) JSTで基礎情報
   let { year, month, firstWeekday, totalDays, numWeeks } =
     calcMonthInfoFromYYYYMM_JST(state.monthStr);
 
-  // 2) サーバ基準の曜日テーブルを作る
+  // 2) サーバ基準の曜日マップ（JP1文字）＋ フォールバック（JST）
   const youbiMap = inferWeekcharMapForMonth(year, month);
-  // ← ここを差し替え
   const youbiOf = (d) => normalizeWeekChar(youbiMap.get(d) || jpDowJST(year, month, d));
-  
- // 3) 1日の曜日が取れていれば列開始をサーバ基準に上書き
+
+  // 3) 1日の列開始をサーバ側で上書き
   const y1 = youbiMap.get(1);
-  if (y1 != null && WK_INDEX[y1] != null) {
-    firstWeekday = WK_INDEX[y1];
-  }
-  
-  // 4) 以降は従来通りだが、セルキー生成は必ず youbiOf(day) を使う
+  if (y1 != null && WK_INDEX[y1] != null) firstWeekday = WK_INDEX[y1];
+
+  // 4) タイトル・ヘッダ
   updateTitle(year, month);
-  clearTable();
+  document.querySelector('#calendar thead').innerHTML = '';
   renderHeader();
 
+  // 5) holiday set / nowJST は一度だけ
   const holidaySet = new Set((holidays || []).map(h => h.split('(')[0]));
-  const tbody = document.querySelector('#calendar tbody');
+  const nowJST = new Date(Date.now() + 9*60*60*1000);
+
+  // 6) 新tbodyを組み立て → 最後に置換
+  const tbodyNew = document.createElement('tbody');
 
   for (let w = 0; w < numWeeks; w++) {
     // (a) 日付行
@@ -215,8 +216,6 @@ function renderCalendar(){
         const label = `${month + 1}/${dayNum}`;
         if (holidaySet.has(label)) td.classList.add('holiday');
 
-        // 今日判定（JST）
-        const nowJST = new Date(Date.now() + 9*60*60*1000);
         if (year === nowJST.getUTCFullYear() &&
             month === nowJST.getUTCMonth() &&
             dayNum === nowJST.getUTCDate()) {
@@ -225,18 +224,18 @@ function renderCalendar(){
       }
       trWeek.appendChild(td);
     }
-    tbody.appendChild(trWeek);
+    tbodyNew.appendChild(trWeek);
 
-    // (b) 週内 “全科で医師0” 判定（キーは JP/EN 両対応）
+    // (b) 週内 “全科で医師0” 判定
     const dayHasDoctor = {};
     for (let d = 0; d < 7; d++) {
       const dayNum = w * 7 + d - firstWeekday + 1;
       if (dayNum < 1 || dayNum > totalDays) continue;
-    
-      const tok   = youbiOf(dayNum); // '水' など
+
+      const tok   = youbiOf(dayNum); // '水'
       const keyJP = `${month + 1}/${dayNum}(${tok})`;
       const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;
-    
+
       dayHasDoctor[dayNum] = rooms.some(room => {
         const obj = schedule[room] || {};
         const entry = obj[keyJP] || obj[keyEN];
@@ -244,8 +243,8 @@ function renderCalendar(){
         return !!disp && disp !== '休診';
       });
     }
-    
-    // (c) 診療科行（キーはサーバの曜日！）
+
+    // (c) 診療科行
     rooms.forEach((room, rIndex) => {
       const trRoom = document.createElement('tr');
       const tdRoom = document.createElement('td');
@@ -254,19 +253,20 @@ function renderCalendar(){
       for (let d = 0; d < 7; d++) {
         const td = document.createElement('td');
         const dayNum = w * 7 + d - firstWeekday + 1;
-        // ★ 月の外は「空<td>をappendしてからcontinue」
+
+        // 月の外は空セル
         if (dayNum < 1 || dayNum > totalDays) {
-          trRoom.appendChild(td);   // 空セルを入れる（クラス付けたければ td.classList.add('empty') など）
+          trRoom.appendChild(td);
           continue;
         }
-        const tok   = youbiOf(dayNum); // '水'
+
+        const tok   = youbiOf(dayNum);
         const keyJP = `${month + 1}/${dayNum}(${tok})`;
         const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;
-      
-        // ★ ここを1回の宣言に統一（重複していた const e を排除）
         const entry = (schedule[room]?.[keyJP]) || (schedule[room]?.[keyEN]);
-      
+
         if (!dayHasDoctor[dayNum]) {
+          // 週内ゼロ → 先頭科だけ rowSpan セル
           if (rIndex === 0) {
             td.textContent = '休診日';
             td.classList.add('kyushin-cell');
@@ -276,26 +276,25 @@ function renderCalendar(){
           }
           continue;
         }
-      
+
         if (entry && (entry.name || entry.displayName)) {
           const t = `${entry.timeFrom || ''}${entry.timeTo ? '～' + entry.timeTo : ''}`;
           td.innerHTML =
             `<div><span>${t}</span></div>
              <div><span${entry.sex==='女' ? ' class="female"':''}>${entry.displayName || entry.name}</span>${entry.tongueMark ? ` <span title="舌下">${entry.tongueMark}</span>`:''}</div>`;
-      
+
           if (entry.displayName === '休診') td.classList.add('kyushin-cell');
           if (entry.displayName === '調整中') td.classList.add('cyousei-cell');
-      
+
           if (entry.displayName !== '休診') {
             td.style.cursor = 'zoom-in';
-            td.addEventListener('click', () => {
-              showCellModal({
-                date: `${month+1}/${dayNum}`,
-                dept: room,
-                time: t,
-                name: entry.displayName || entry.name,
-                tongue: entry.tongueMark
-              });
+            // ★ 委譲用に data-entry を付与（個別の addEventListener はしない）
+            td.dataset.entry = JSON.stringify({
+              date: `${month+1}/${dayNum}`,
+              dept: room,
+              time: t,
+              name: entry.displayName || entry.name,
+              tongue: entry.tongueMark
             });
           }
         } else {
@@ -303,11 +302,20 @@ function renderCalendar(){
           if (!dayHasDoctor[dayNum]) td.classList.add('kyushin-cell');
           td.setAttribute('aria-label', `${month+1}/${dayNum} ${room} ${td.textContent}`);
         }
-      
+
         trRoom.appendChild(td);
       }
-      tbody.appendChild(trRoom);
+      tbodyNew.appendChild(trRoom);
     });
+  }
+
+  // 7) tbody 一括置換（最後にドン）
+  const table = document.getElementById('calendar');
+  const oldTbody = table.tBodies[0];
+  if (oldTbody) {
+    table.replaceChild(tbodyNew, oldTbody);
+  } else {
+    table.appendChild(tbodyNew);
   }
 }
 
@@ -405,6 +413,16 @@ document.addEventListener('DOMContentLoaded', () => {
     state.monthStr = yyyymm(new Date(y, m, 1));    // 翌月
     fetchSchedule().catch(e => alert(e));
   };
+
+  // クリック委譲（医師セルのモーダル起動）
+  document.getElementById('calendar').addEventListener('click', (e) => {
+    const td = e.target.closest('td[data-entry]');
+    if (!td) return;
+    try {
+      const payload = JSON.parse(td.dataset.entry);
+      showCellModal(payload);
+    } catch (_) { /* noop */ }
+  });
 
   // 初回
   fetchSchedule().catch(e => alert(e));
