@@ -9,6 +9,9 @@ const WK_INDEX = { '月':0,'火':1,'水':2,'木':3,'金':4,'土':5,'日':6,
 const JP2EN = { '月':'Mon','火':'Tue','水':'Wed','木':'Thu','金':'Fri','土':'Sat','日':'Sun' };
 const EN2JP = { 'Mon':'月','Tue':'火','Wed':'水','Thu':'木','Fri':'金','Sat':'土','Sun':'日' };
 
+// ===== デバッグフラグ =====
+const DEBUG = false;   // ← ここを false 固定に
+
 const DEPT_ORDER = [
   "小児科１診","小児科２診","小児科３診",
   "耳鼻科１診","耳鼻科２診","耳鼻科３診",
@@ -34,6 +37,19 @@ let state = {
 };
 
 // ===== Util =====
+// ===== Loader control =====
+const loaderEl = document.getElementById('loader');
+function showLoader(){ loaderEl && loaderEl.classList.add('show'); }
+function hideLoader(){ loaderEl && loaderEl.classList.remove('show'); }
+
+// 連打防止用：矢印ボタンの活性/非活性をまとめて制御
+function setNavEnabled(enabled){
+  const prev = document.getElementById('prevMonth');
+  const next = document.getElementById('nextMonth');
+  if (prev) prev.disabled = !enabled;
+  if (next) next.disabled = !enabled;
+}
+
 // === 追加：JST(UTC+9) の曜日を返す ===
 function jpDowJST(y, m0, d) {
   // m0は0始まりの月
@@ -195,6 +211,15 @@ function renderCalendar(){
   const holidaySet = new Set((holidays || []).map(h => h.split('(')[0]));
   const tbody = document.querySelector('#calendar tbody');
 
+  // ★ 追加：その月の日⇒曜日/JP/EN/キー を一括プリ計算（1回だけ）
+  const dayInfo = []; // 1..totalDays
+  for (let d = 1; d <= totalDays; d++) {
+    const tok = youbiOf(d);                    // '月' ～ '日'（正規化済み）
+    const keyJP = `${month+1}/${d}(${tok})`;
+    const keyEN = `${month+1}/${d}(${JP2EN[tok] || tok})`;
+    dayInfo[d] = { tok, keyJP, keyEN };
+  }
+  
   // (a) 日付行（グリッドに合わせて確定位置に描画）
   const trWeek = document.createElement('tr');
   trWeek.classList.add('week-row', 'date-row');
@@ -321,6 +346,9 @@ function showCellModal({ date, dept, time, name, tongue }) {
 
 // ===== データ取得（google.script.run → fetch に置換） =====
 async function fetchSchedule(){
+  showLoader();
+  setNavEnabled(false);
+
   const url = new URL(GAS_API);
   url.searchParams.set('action', 'schedule');
   url.searchParams.set('clinic', clinicCode);
@@ -354,7 +382,9 @@ async function fetchSchedule(){
   document.getElementById('nextMonth').disabled = !!maxYearMonth && (state.monthStr >= maxYearMonth);
 
   renderCalendar();
-  window.__dumpKeyMatch && window.__dumpKeyMatch();
+
+  setNavEnabled(true);
+  hideLoader();
 }
 
 // ===== 起動処理（GAS版の流儀に合わせた最小UI） =====
@@ -381,6 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // === デバッグ: 先頭1週間の横並び・キー一致を画面に出す ===
 window.__dumpKeyMatch = function(){
+  if (!DEBUG) return;
   const box = document.getElementById('__cal_dbg2') || document.createElement('div');
   box.id='__cal_dbg2';
   Object.assign(box.style,{position:'fixed',left:'10px',bottom:'10px',zIndex:9999,
