@@ -3,6 +3,9 @@ const GAS_API = 'https://script.google.com/macros/s/AKfycbyWf9oxetqrRGTBipHJmw29
 
 // ===== 既存GASのJSと同じ定義 =====
 const WEEKDAYS = ["月","火","水","木","金","土","日"];
+// 曜日1文字 -> 月曜起点の列番号
+const WK_INDEX = { '月':0, '火':1, '水':2, '木':3, '金':4, '土':5, '日':6 };
+
 const DEPT_ORDER = [
   "小児科１診","小児科２診","小児科３診",
   "耳鼻科１診","耳鼻科２診","耳鼻科３診",
