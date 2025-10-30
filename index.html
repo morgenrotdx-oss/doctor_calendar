@@ -41,6 +41,13 @@
     history.replaceState(null, '', url);
   }
 
+  // ここに置く（fetchDataより上）
+  function getMonthFromURL() {
+    const p = new URLSearchParams(location.search);
+    const v = (p.get('month') || '').trim();
+    return /^\d{4}-\d{2}$/.test(v) ? v : new Date().toISOString().slice(0,7); // "YYYY-MM"
+  }
+
   async function fetchData(clinic) {
     const out  = document.getElementById('out');
     const meta = document.getElementById('meta');
