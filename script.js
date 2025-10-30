@@ -34,6 +34,10 @@ let state = {
   holidays: []
 };
 
+// ===== Debug Flag =====
+const DEBUG = false;  // ←本番は false、調査時だけ true に
+function dlog(...args){ if (DEBUG) console.log(...args); }
+
 // ===== Util =====
 // === 追加：JST(UTC+9) の曜日を返す ===
 function jpDowJST(y, m0, d) {
@@ -346,6 +350,8 @@ async function fetchSchedule(){
   url.searchParams.set('month', state.monthStr); // ★ここ重要
   url.searchParams.set('t', Date.now());
 
+  dlog('API request', { action: 'schedule', clinic: clinicCode, month: state.monthStr });
+
   showLoader();                     // ← 追加
   try {
     const res = await fetch(url.toString());
@@ -373,6 +379,12 @@ async function fetchSchedule(){
   } finally {
     hideLoader();
     window.__dumpKeyMatch && window.__dumpKeyMatch();
+    if (DEBUG && window.__dumpKeyMatch) window.__dumpKeyMatch();
+    if (!DEBUG) {
+      // デバッグUIの残存防止
+      const dbg = document.getElementById('__cal_dbg2');
+      if (dbg) dbg.remove();
+    }
   }
 }
 
@@ -400,6 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // === デバッグ: 先頭1週間の横並び・キー一致を画面に出す ===
 window.__dumpKeyMatch = function(){
+  if (!DEBUG) return;
   const box = document.getElementById('__cal_dbg2') || document.createElement('div');
   box.id='__cal_dbg2';
   Object.assign(box.style,{position:'fixed',left:'10px',bottom:'10px',zIndex:9999,
