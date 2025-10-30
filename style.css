@@ -330,3 +330,18 @@ tr.week-row td.holiday {
   background: #ffe066 !important;
   border: 3px solid #ff9800 !important;
 }
+
+/* --- 祝日（日付行）の配色を修正：文字＝赤、背景＝日付行の水色 --- */
+#calendar tr.date-row td.holiday {
+  background-color: #e6f7ff !important;  /* 通常の日付行と同じ水色 */
+  color: #e53935 !important;              /* 文字を赤に（白抜き防止） */
+  font-weight: bold;
+}
+
+/* 祝日かつ「今日」の場合は、今日ハイライトを優先（既存仕様に合わせる） */
+#calendar tr.date-row td.holiday.today-cell {
+  background: #ffb300 !important;
+  color: #fff !important;
+  border: 3px solid #ff9800 !important;
+  box-shadow: 0 0 8px #ff980080;
+}
