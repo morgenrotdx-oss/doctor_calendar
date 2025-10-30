@@ -1,62 +1,442 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>医師勤務表</title>
-  <!-- あなたの GAS で使っていた CSS を style.css にそのまま貼ってOK -->
-  <link rel="stylesheet" href="style.css" />
-  <style>
-    /* 最低限のレイアウト（あなたのCSSが上書きします）*/
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; margin: 16px; }
-    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
-    .toolbar .spacer { flex:1; }
-    .calendar-nav { display:flex; gap:8px; align-items:center; margin:8px 0 12px; }
-    #meta { color:#666; font-size:12px; margin:6px 0 12px; display:none; } /* デバッグ時に display:block; */
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border:1px solid #ddd; padding:8px; vertical-align:top; }
-    thead th { background:#f5f7fb; }
-    .saturday { color:#1a73e8; }
-    .sunday   { color:#d93025; }
-    .holiday  { background:#fff5f5; }
-    .today-cell { outline:2px solid #333; outline-offset:-2px; }
-    .kyushin-cell { background:#f0f0f0; color:#666; text-align:center; }
-    .cyousei-cell { background:#fff8e1; }
-    .week-band { background:#fafafa; white-space:nowrap; font-weight:600; }
-    .female { color:#d93025; } /* 女医は赤 */
-    .date-row td { background:#f9fbff; text-align:center; font-weight:600; }
-    .title { font-size:18px; font-weight:700; margin: 0 8px; }
-    button { cursor:pointer; }
-    input[type="text"] { padding:4px 6px; }
-  </style>
-</head>
-<body>
+<script>
+//―――――――――――――――――――――――――――――――
+// script.js
+//―――――――――――――――――――――――――――――――
 
-  <h1 style="margin:4px 0 12px;">Doctor Calendar</h1>
+// 曜日ラベル（週の開始は月曜日）
+const WEEKDAYS = ["月","火","水","木","金","土","日"];
 
-  <div class="toolbar">
-    <label>Clinic:
-      <input id="clinicInput" type="text" size="6" inputmode="numeric" pattern="[0-9]{3}" />
-    </label>
-    <button id="reloadBtn">再読込</button>
-    <div class="spacer"></div>
-  </div>
+// 診療科の表示順（院ごとに出てくる順番の優先リスト）
+const DEPT_ORDER = [
+  "小児科１診",
+  "小児科２診",
+  "小児科３診",
+  "耳鼻科１診",
+  "耳鼻科２診",
+  "耳鼻科３診",
+  "皮膚科",
+  "形成外科",
+  "小児科夜診",
+  "耳鼻科夜診"
+];
 
-  <div class="calendar-nav">
-    <button id="prevMonth" aria-label="前の月">◀</button>
-    <h2 id="tableTitle" class="title"></h2>
-    <button id="nextMonth" aria-label="次の月">▶</button>
-  </div>
+// データが存在する最小・最大年月（"YYYY-MM"形式、月切替ボタンの有効・無効判定で利用）
+let minYearMonth = "";
+let maxYearMonth = "";
 
-  <small id="meta"></small>
 
-  <div class="calendar-container">
-    <table id="calendar">
-      <thead></thead>
-      <tbody></tbody>
-    </table>
-  </div>
+/**************************************************************************************
+ * 現在表示中のオフセットを受け取り、
+ * その「反対の月だけ」のタブを上下２つに生成する
+ * @param {number} currentOffset - 0=当月、1=翌月
+ *
+ * ※タブUIで「今表示していない方の月」をワンクリックで切り替える
+ **************************************************************************************/
+function createMonthTab(currentOffset = 0) {
+  // .tab-containerクラスの全ての要素を取得（タブ表示用）
+  const containers = document.querySelectorAll('.tab-container');
+  if (containers.length === 0) return;
 
-  <script src="app.js"></script>
-</body>
-</html>
+  // 現在日時から今年・今月を取得
+  const now      = new Date();
+  const y0       = now.getFullYear(), m0 = now.getMonth();           // 当月
+  const nextDate = new Date(y0, m0 + 1, 1);                          // 翌月の1日
+  const y1       = nextDate.getFullYear(), m1 = nextDate.getMonth(); // 翌月
+
+  // 次に表示するオフセットを決定（0:今月→1:来月, 1:来月→0:今月）
+  const nextOffset = currentOffset === 0 ? 1 : 0;
+  // タブに表示する年月ラベルを作成
+  const label = nextOffset === 0
+    ? `${y0}年${m0 + 1}月`
+    : `${y1}年${m1 + 1}月`;
+
+  containers.forEach(container => {
+    // まずコンテナ内の既存要素をクリア
+    container.innerHTML = '';
+    // 新しいタブ要素を作成
+    const tab = document.createElement('div');
+    tab.className      = 'tab';               // タブ用クラス
+    tab.dataset.offset = nextOffset;          // どちらの月か（0/1）を属性で持つ
+    tab.textContent   = label;                // タブに年月を表示
+    tab.addEventListener('click', () => {
+      // タブクリック時：もう片方の月のタブを再描画し、スケジュールも取得
+      createMonthTab(nextOffset);
+      fetchSchedule(nextOffset);
+    });
+    // 作成したタブをDOMに追加
+    container.appendChild(tab);
+  });
+}
+
+
+
+
+/**************************************************************************************
+ * カレンダーを描画するメイン関数
+ * @param {number} monthOffset - 0=当月、1=翌月, ...（カレンダー表示の基準月をずらす値）
+ **************************************************************************************/
+function renderCalendar(monthOffset = 0) {
+  // 1) 表示月の基本情報
+  const { year, month, firstWeekday, totalDays, numWeeks } = calcMonthInfo(monthOffset);
+
+  // 2) タイトル更新 & テーブル初期化
+  updateTitle(year, month);
+  clearTable();
+  renderHeader();
+
+  // 3) 祝日を判定しやすい形に
+  const holidaySet = new Set(
+    Array.isArray(holidays) ? holidays.map(h => h.split('(')[0]) : []
+  );
+
+  const tbody = document.querySelector('#calendar tbody');
+
+  // 週ごとに描画
+  for (let w = 0; w < numWeeks; w++) {
+    // (a) 日付行
+    const trWeek = document.createElement('tr');
+    trWeek.classList.add('week-row', 'date-row');
+
+    const tdLabel = document.createElement('td');
+    tdLabel.textContent = '';
+    trWeek.appendChild(tdLabel);
+
+    for (let d = 0; d < 7; d++) {
+      const td = document.createElement('td');
+      const dayNum = w * 7 + d - firstWeekday + 1;
+
+      if (dayNum >= 1 && dayNum <= totalDays) {
+        const label = `${month + 1}/${dayNum}`;
+        td.textContent = dayNum;
+
+        // 土日
+        if (d === 5) td.classList.add('saturday');
+        if (d === 6) td.classList.add('sunday');
+
+        // 祝日
+        if (holidaySet.has(label)) td.classList.add('holiday');
+
+        // 今日
+        const today = new Date();
+        if (
+          year === today.getFullYear() &&
+          month === today.getMonth() &&
+          dayNum === today.getDate()
+        ) {
+          td.classList.add('today-cell');
+        }
+      }
+      trWeek.appendChild(td);
+    }
+    tbody.appendChild(trWeek);
+
+    // (b) その週の「各日付に少なくとも1診療科でも医師が入っているか」を先に判定
+    const dayHasDoctor = {};
+    for (let d = 0; d < 7; d++) {
+      const dayNum = w * 7 + d - firstWeekday + 1;
+      if (dayNum < 1 || dayNum > totalDays) continue;
+      const key = `${month + 1}/${dayNum}(${WEEKDAYS[d]})`;
+      dayHasDoctor[dayNum] = rooms.some(room => {
+        const entry = schedule[room]?.[key];
+        const disp = entry?.displayName || entry?.name || '';
+        // 「休診」以外が入っていれば“医師あり”
+        return !!disp && disp !== '休診';
+      });
+    }
+
+    // (c) 各診療科の行
+//    rooms.forEach(room => {
+    rooms.forEach((room, rIndex) => {
+      const trRoom = document.createElement('tr');
+
+      const tdRoom = document.createElement('td');
+      tdRoom.textContent = room;
+      trRoom.appendChild(tdRoom);
+
+      for (let d = 0; d < 7; d++) {
+        const td = document.createElement('td');
+        const dayNum = w * 7 + d - firstWeekday + 1;
+
+        if (dayNum >= 1 && dayNum <= totalDays) {
+          const key = `${month + 1}/${dayNum}(${WEEKDAYS[d]})`;
+          const entry = schedule[room]?.[key];
+
+          // ★ その日まるごと休診なら、最初の診療科行にだけ「休診日（rowSpan）」を立てる
+          if (!dayHasDoctor[dayNum]) {
+            if (rIndex === 0) {
+              td.textContent = "休診日";
+              td.classList.add("kyushin-cell");
+              td.style.cursor = "";
+              td.setAttribute("aria-label", `${month + 1}/${dayNum} 休診日`);
+              td.rowSpan = rooms.length;     // ← 縦結合！
+              trRoom.appendChild(td);
+            }
+            // rIndex>0 の行は、この日の <td> は追加しない（上の rowSpan に吸収される）
+            continue; // ← 次の日へ
+          }
+
+          if (entry && (entry.name || entry.displayName)) {
+            // 表示内容
+            td.innerHTML =
+              `<div><span>${entry.timeFrom || ""}${entry.timeTo ? '～' + entry.timeTo : ''}</span></div>
+               <div><span${entry.sex === "女" ? ' class="female"' : ''}>${entry.displayName || entry.name}</span>${entry.tongueMark ? ` <span title="舌下">${entry.tongueMark}</span>` : ''}</div>`;
+
+            // 休診/調整中のクラス
+            if (entry.displayName === "休診") {
+              td.classList.add("kyushin-cell");
+              td.style.cursor = "";
+            } else {
+              td.style.cursor = "zoom-in";
+              td.addEventListener('click', () => {
+                showCellModal({
+                  date: `${month + 1}/${dayNum}`,
+                  dept: room,
+                  time: `${entry.timeFrom || ""}${entry.timeTo ? '～' + entry.timeTo : ''}`,
+                  name: entry.displayName || entry.name,
+                  tongue: entry.tongueMark
+                });
+              });
+            }
+            if (entry.displayName === "調整中") {
+              td.classList.add("cyousei-cell");
+            }
+          } else {
+            // データが無いセル：その日全体に医師がいるかで表示を分岐
+            if (dayHasDoctor[dayNum]) {
+              td.textContent = "−";       // ハイフン、非グレー
+              td.style.cursor = "";
+            } else {
+              td.textContent = "休診";    // その日まるごと休診 → グレー
+              td.classList.add("kyushin-cell");
+              td.style.cursor = "";
+            }
+            td.setAttribute("aria-label", `${month + 1}/${dayNum} ${room} ${td.textContent}`);
+          }
+        }
+
+        trRoom.appendChild(td);
+      }
+
+      tbody.appendChild(trRoom);
+    });
+  }
+}
+
+
+/**************************************************************************************
+ * 指定した月オフセットのカレンダー基本情報を返す
+ * @param {number} offset - 0:当月, 1:翌月, -1:前月…など
+ * @returns {object} { year, month, firstWeekday, totalDays, numWeeks }
+ **************************************************************************************/
+function calcMonthInfo(offset) {
+  const now = new Date();
+
+  // (1) 基準となる年月の1日を取得（例：2025/6/1 なら offset=0, 2025/7/1なら offset=1）
+  const baseDate = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const year  = baseDate.getFullYear();
+  const month = baseDate.getMonth(); // 0-11
+
+  // (2) その月の1日が何曜日か（0:日曜〜6:土曜）
+  const firstDay = new Date(year, month, 1);
+  let firstWeekday = firstDay.getDay();
+
+  // (3) 月曜始まりに調整（0:月, 1:火...6:日）
+  firstWeekday = (firstWeekday === 0) ? 6 : firstWeekday - 1;
+
+  // (4) その月の最終日と日数を取得
+  const lastDay = new Date(year, month + 1, 0);
+  const totalDays = lastDay.getDate();
+
+  // (5) 表示上の週数を算出
+  const numWeeks = Math.ceil((firstWeekday + totalDays) / 7);
+
+  // (6) 結果を返却
+  return { year, month, firstWeekday, totalDays, numWeeks };
+}
+
+
+/**************************************************************************************
+ * タイトル（クリニック名＋年月）を更新する
+ * @param {number} year  - 表示中の年
+ * @param {number} month - 0始まりの月番号（表示時は+1する）
+ **************************************************************************************/
+function updateTitle(year, month) {
+  // #tableTitle要素のテキストを「クリニック名 年月 医師勤務表」にセット
+  document.getElementById('tableTitle').textContent
+    = `(院内向け)${clinicName} ${year}年${month + 1}月 医師勤務表`;
+}
+
+
+/**************************************************************************************
+ * カレンダーテーブルの内容をクリアする
+ * ヘッダーと本文（tbody）の両方を空にする
+ **************************************************************************************/
+function clearTable() {
+  document.querySelector('#calendar thead').innerHTML = '';
+  document.querySelector('#calendar tbody').innerHTML = '';
+}
+
+
+/**************************************************************************************
+ * 曜日ヘッダーを描画
+ * カレンダーの一番上の行（曜日見出し）を生成してテーブルに追加する
+ **************************************************************************************/
+function renderHeader() {
+  const headRow = document.createElement('tr');
+  
+  // 左端の空白セル（週ラベルの場所用）
+  headRow.appendChild(document.createElement('th'));
+
+  // WEEKDAYS配列（月～日）を使って曜日ヘッダーを生成
+  WEEKDAYS.forEach((wd, i) => {
+    const th = document.createElement('th');
+    th.textContent = wd;
+
+    // 土曜・日曜に色付け用クラス付与
+    if (i === 5) th.classList.add('saturday'); // 土曜は6番目
+    if (i === 6) th.classList.add('sunday');   // 日曜は7番目
+    headRow.appendChild(th);
+  });
+
+  // テーブルのtheadに追加
+  document.querySelector('#calendar thead').appendChild(headRow);
+}
+
+
+
+
+
+/**************************************************************************************
+ * サーバーからスケジュールを取得して描画
+ * @param {number} offset - 現在表示する月のオフセット（0:今月, 1:翌月, ...）
+ **************************************************************************************/
+function fetchSchedule(offset = 0) {
+  // GASのサーバーサイド関数 getScheduleData を呼び出し
+  google.script.run
+    .withFailureHandler(err => {
+      // 失敗時のエラー表示
+      console.error('❌ getScheduleData failed:', err);
+    })
+    .withSuccessHandler(data => {
+      // データ取得失敗時は何もしない
+      if (!data) {
+        console.error('❌ getScheduleData returned null or undefined');
+        return;
+      }
+
+      // サーバーから最小・最大の年月（YYYY-MM形式）を受け取る
+      minYearMonth = data.minYearMonth;
+      maxYearMonth = data.maxYearMonth;
+
+      // 現在の年月（YYYY-MM）を安全に算出
+      const now = new Date();
+      const base = new Date(now.getFullYear(), now.getMonth() + offset, 1); // ← Dateで正規化
+      const thisYM = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
+
+      // 前後月ボタンの有効・無効
+      document.getElementById('prevMonth').disabled = (thisYM <= minYearMonth);
+      document.getElementById('nextMonth').disabled = (thisYM >= maxYearMonth);
+
+      // サーバー側のデバッグログ表示
+      console.group('📡 Server debug');
+      (data.debug||[]).forEach(line => console.log(line));
+      console.groupEnd();
+
+      // サーバーから取得したデータをグローバル変数に格納
+      dates = Array.isArray(data.dates) ? data.dates : [];
+      rooms = Array.isArray(data.rooms)
+        ? data.rooms.sort((a, b) => {
+            // 部署並び順はDEPT_ORDERで制御。未定義は後ろ
+            const idxA = DEPT_ORDER.indexOf(a);
+            const idxB = DEPT_ORDER.indexOf(b);
+            if (idxA === -1 && idxB === -1) return a.localeCompare(b, 'ja');
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return idxA - idxB;
+          })
+        : [];
+      schedule = data.schedule || {};
+      holidays = Array.isArray(data.holidays) ? data.holidays : [];
+
+      // 取得内容を確認
+      console.log('✅ getScheduleData OK:', { dates, rooms, schedule, holidays });
+
+      // カレンダー描画
+      renderCalendar(offset);
+    })
+    .getScheduleData(clinicCode, offset); // clinicCodeはグローバル変数
+}
+
+
+// 現在の月オフセット（例: 0=今月, 1=翌月, -1=先月 など）
+let monthOffset = 0;
+
+/**************************************************************************************
+ * 指定したオフセットでカレンダーを再読み込みする
+ * @param {number} offset - 月のオフセット値
+ **************************************************************************************/
+function reloadCalendar(offset) {
+  monthOffset = offset;          // グローバル変数を更新
+  fetchSchedule(monthOffset);    // スケジュールデータを再取得し、カレンダーを再描画
+}
+
+
+// DOMが完全に読み込まれたら初期化処理
+document.addEventListener('DOMContentLoaded', () => {
+  monthOffset = 0;                 // 初期は今月
+  reloadCalendar(monthOffset);     // 最初のカレンダーを描画
+
+  // 「◀」前月ボタン
+  document.getElementById('prevMonth').addEventListener('click', () => {
+    reloadCalendar(monthOffset - 1); // オフセットをデクリメントして再描画
+  });
+  // 「▶」翌月ボタン
+  document.getElementById('nextMonth').addEventListener('click', () => {
+    reloadCalendar(monthOffset + 1); // オフセットをインクリメントして再描画
+  });
+});
+
+// 医師名などを拡大表示するモーダル
+function showCellModal({ date, dept, time, name, tongue }) {
+  const prevModal = document.querySelector('.cell-modal');
+  if (prevModal) {
+    // フェードアウトを付与
+    prevModal.classList.add('fade-out');
+    // 完全に消えたらremoveして新しいモーダル作成
+    setTimeout(() => {
+      prevModal.remove();
+      createModal();  // 新規モーダル生成を関数化
+    }, 200); // CSSのtransitionと同じ時間
+  } else {
+    createModal();
+  }
+
+  function createModal() {
+    const modal = document.createElement('div');
+    modal.className = 'cell-modal';
+    modal.innerHTML = `
+      <span class="close-btn" onclick="this.parentElement.remove()">×</span>
+      <div class="modal-label">日付</div>
+      <div class="modal-value">${date}</div>
+      <div class="modal-label">診療科</div>
+      <div class="modal-value">${dept}</div>
+      <div class="modal-label">医師名</div>
+      <div class="modal-value">${name}${tongue ? ` <span title="舌下">${tongue}</span>` : ""}</div>
+      <div class="modal-label">勤務時間</div>
+      <div class="modal-value">${time}</div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', e => {
+      if (e.target === modal) modal.remove();
+    });
+  }
+}
+
+
+// モーダルの外側クリックで閉じる
+document.getElementById('cellModal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+
+</script>
