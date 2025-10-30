@@ -120,32 +120,30 @@ function getFirstWeekdayFromServer(month0) {
 
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
-  // state補正
+  // monthStrのガード
   if (!state.monthStr || !/^\d{4}-\d{2}$/.test(state.monthStr)) {
     state.monthStr = yyyymm(new Date());
   }
 
-  // ① 表示月の基本情報（JST）
-  let { year, month, firstWeekday, totalDays, numWeeks } =
+  // 1) まずJSTで月情報を確定（← 先にやる！）
+  const { year, month, firstWeekday, totalDays, numWeeks } =
     calcMonthInfoFromYYYYMM_JST(state.monthStr);
 
-  // ② サーバのキーから 1日の開始列を推定して上書き
-  const serverFirst = getFirstWeekdayFromServer(month);     // 0=月..6=日  or null
-  const startCol = (serverFirst ?? firstWeekday);           // ← 以後はこれを使う
+  // 2) サーバ返却の dates から曜日マップを作る（この時点で month は定義済）
+  const youbiMap = new Map();
+  (dates || []).forEach(s => {
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\((.)\)$/); // "10/2(木)" 等
+    if (!m) return;
+    const mm = Number(m[1]), dd = Number(m[2]), youbi = m[3]; // '月'〜'日'
+    if (mm === (month + 1)) youbiMap.set(dd, youbi);
+  });
+  // サーバに無い日だけ保険で JST 計算
+  const youbiOf = (d) => youbiMap.get(d) ?? jpDowJST(year, month, d);
 
+  // 3) 描画処理（従来どおり）
   updateTitle(year, month);
   clearTable();
   renderHeader();
-
-  // ③ サーバ返却の “M/d(○)” から当月日の曜日マップを作る
-  const youbiMap = new Map();
-  (dates || []).forEach(s => {
-    const m = s.match(/^(\d{1,2})\/(\d{1,2})\((.)\)$/); // "10/2(木)"
-    if (!m) return;
-    const mm = +m[1], dd = +m[2], wchar = m[3];
-    if (mm === (month + 1)) youbiMap.set(dd, wchar);
-  });
-  const youbiOf = (d) => youbiMap.get(d) ?? jpDowJST(year, month, d);
 
   const holidaySet = new Set((holidays || []).map(h => h.split('(')[0]));
   const tbody = document.querySelector('#calendar tbody');
@@ -154,37 +152,39 @@ function renderCalendar(){
     // (a) 日付行
     const trWeek = document.createElement('tr');
     trWeek.classList.add('week-row', 'date-row');
-
     const tdLabel = document.createElement('td');
     tdLabel.textContent = '';
     trWeek.appendChild(tdLabel);
 
     for (let d = 0; d < 7; d++) {
       const td = document.createElement('td');
-      const dayNum = w * 7 + d - startCol + 1;   // ← firstWeekday ではなく startCol
+      const dayNum = w * 7 + d - firstWeekday + 1;
 
       if (dayNum >= 1 && dayNum <= totalDays) {
         td.textContent = dayNum;
         if (d === 5) td.classList.add('saturday');
         if (d === 6) td.classList.add('sunday');
-        if (holidaySet.has(`${month + 1}/${dayNum}`)) td.classList.add('holiday');
+        const label = `${month + 1}/${dayNum}`;
+        if (holidaySet.has(label)) td.classList.add('holiday');
 
-        const nowJST = new Date(Date.now() + 9*3600*1000);
-        if (year === nowJST.getUTCFullYear() &&
-            month === nowJST.getUTCMonth() &&
-            dayNum === nowJST.getUTCDate()) td.classList.add('today-cell');
+        const nowJST = new Date(Date.now() + (9 * 60 * 60 * 1000));
+        const todayY = nowJST.getUTCFullYear();
+        const todayM = nowJST.getUTCMonth();
+        const todayD = nowJST.getUTCDate();
+        if (year === todayY && month === todayM && dayNum === todayD) {
+          td.classList.add('today-cell');
+        }
       }
       trWeek.appendChild(td);
     }
     tbody.appendChild(trWeek);
 
-    // (b) 週内の“全科で医師がいない日”判定
+    // (b) 週内「全科で医師がいない日」判定
     const dayHasDoctor = {};
     for (let d = 0; d < 7; d++) {
-      const dayNum = w * 7 + d - startCol + 1;   // ← 同じく startCol
+      const dayNum = w * 7 + d - firstWeekday + 1;
       if (dayNum < 1 || dayNum > totalDays) continue;
-
-      const key = `${month + 1}/${dayNum}(${youbiOf(dayNum)})`; // ← サーバ曜日でキー生成
+      const key = `${month + 1}/${dayNum}(${youbiOf(dayNum)})`; // ★ サーバ優先の曜日
       dayHasDoctor[dayNum] = rooms.some(room => {
         const e = schedule[room]?.[key];
         const disp = e?.displayName || e?.name || '';
@@ -195,17 +195,16 @@ function renderCalendar(){
     // (c) 診療科行
     rooms.forEach((room, rIndex) => {
       const trRoom = document.createElement('tr');
-
       const tdRoom = document.createElement('td');
       tdRoom.textContent = room;
       trRoom.appendChild(tdRoom);
 
       for (let d = 0; d < 7; d++) {
         const td = document.createElement('td');
-        const dayNum = w * 7 + d - startCol + 1; // ← 同じく startCol
+        const dayNum = w * 7 + d - firstWeekday + 1;
         if (dayNum < 1 || dayNum > totalDays) continue;
 
-        const key = `${month + 1}/${dayNum}(${youbiOf(dayNum)})`;
+        const key = `${month + 1}/${dayNum}(${youbiOf(dayNum)})`; // ★ 同上
         const e = schedule[room]?.[key];
 
         if (!dayHasDoctor[dayNum]) {
@@ -249,6 +248,7 @@ function renderCalendar(){
     });
   }
 }
+
 
 // モーダル（GAS版と同DOM/クラス）
 function showCellModal({ date, dept, time, name, tongue }) {
@@ -347,22 +347,35 @@ window.__debugCalendarLayout = function(){
     position:'fixed', right:'10px', bottom:'10px', zIndex:9999,
     background:'#000', color:'#0f0', padding:'8px 10px',
     font:'12px/1.4 monospace', maxHeight:'40vh', overflow:'auto',
-    borderRadius:'6px', opacity:'0.9'
+    borderRadius:'6px', opacity:'0.9', whiteSpace:'pre'
   });
+
   const { year, month, firstWeekday, totalDays } = calcMonthInfoFromYYYYMM_JST(state.monthStr);
   const m1 = month + 1;
+  const wdJP = ['日','月','火','水','木','金','土'];
 
-  // rooms[0] から 1日〜7日のキー一致を検証
+  // 代表科のスケジュール鍵をサマリ
   const r0 = rooms[0];
-  const wd = ['日','月','火','水','木','金','土'];
-  const lines = [];
-  lines.push(`month=${state.monthStr} firstWeekday=${firstWeekday}`);
+  const keys = r0 && schedule[r0] ? Object.keys(schedule[r0]).filter(k => k.startsWith(m1 + '/')).sort() : [];
+  const head = [
+    `month=${state.monthStr} firstWeekday=${firstWeekday}`,
+    `rooms=${rooms.length}  r0=${r0 || '(none)'}  keys(r0,m=${m1})=${keys.length}`,
+    `dates(len)=${(dates||[]).length}  youbiMapDays=${(dates||[]).filter(s=>s.startsWith(m1+'/')).length}`,
+    '--- first 12 keys on r0 ---',
+    ...keys.slice(0, 12)
+  ];
+
+  // 1週目のキー一致チェック
+  const chk = [];
   for (let d=1; d<=Math.min(7,totalDays); d++){
-    const key = `${m1}/${d}(${wd[new Date(Date.UTC(year, month, d, 9)).getUTCDay()]})`;
-    const hit = !!(schedule[r0] && schedule[r0][key]);
-    lines.push(`${key}  ->  ${hit ? '✔ hit' : '✖ miss'}`);
+    const wchar = wdJP[new Date(Date.UTC(year, month, d, 9)).getUTCDay()]; // JST基準
+    const key = `${m1}/${d}(${wchar})`;
+    const hit = !!(r0 && schedule[r0] && schedule[r0][key]);
+    chk.push(`${key} -> ${hit ? '✔ hit' : '✖ miss'}`);
   }
-  box.textContent = lines.join('\n');
+
+  box.textContent = head.concat(['--- week1 match ---', ...chk]).join('\n');
   document.body.appendChild(box);
 };
+
 
