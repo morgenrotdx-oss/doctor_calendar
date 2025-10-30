@@ -39,6 +39,7 @@ let state = {
 // ===== Util =====
 // ===== Loader control =====
 const loaderEl = document.getElementById('loader');
+// ===== Loader / Nav control (追加) =====
 function showLoader(){
   const el = document.getElementById('loader');
   if (el) el.classList.add('show');
@@ -47,8 +48,6 @@ function hideLoader(){
   const el = document.getElementById('loader');
   if (el) el.classList.remove('show');
 }
-
-// 連打防止用：矢印ボタンの活性/非活性をまとめて制御
 function setNavEnabled(enabled){
   const prev = document.getElementById('prevMonth');
   const next = document.getElementById('nextMonth');
@@ -359,7 +358,6 @@ function showCellModal({ date, dept, time, name, tongue }) {
 async function fetchSchedule(){
   showLoader();
   setNavEnabled(false);
-
   const url = new URL(GAS_API);
   url.searchParams.set('action', 'schedule');
   url.searchParams.set('clinic', clinicCode);
@@ -367,10 +365,11 @@ async function fetchSchedule(){
   url.searchParams.set('t', Date.now());
   console.log('API URL:', url.toString()); 
 
-  const res = await fetch(url.toString());
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'API error');
-
+  try {
+    const res = await fetch(url.toString());
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'API error');
+  
   clinicName   = json.clinicName || '';
   const data   = json.data || {};
   rooms        = (data.rooms || []).slice();
@@ -393,9 +392,11 @@ async function fetchSchedule(){
   document.getElementById('nextMonth').disabled = !!maxYearMonth && (state.monthStr >= maxYearMonth);
 
   renderCalendar();
-
-  setNavEnabled(true);
-  hideLoader();
+  window.__dumpKeyMatch && window.__dumpKeyMatch();
+  } finally {
+    setNavEnabled(true);
+    hideLoader();
+  }
 }
 
 // ===== 起動処理（GAS版の流儀に合わせた最小UI） =====
