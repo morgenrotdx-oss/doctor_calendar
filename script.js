@@ -22,6 +22,18 @@ let maxYearMonth = "";      // "YYYY-MM"
 // 内部状態：表示中のオフセット（0=今月）
 let monthOffset = 0;
 
+let state = {
+  clinic: null,
+  monthStr: null,   // ← これを使う
+  clinicName: "",
+  dates: [],
+  rooms: [],
+  schedule: {},
+  holidays: [],
+  minYM: null,
+  maxYM: null
+};
+
 // ===== Util =====
 function getClinicFromURL() {
   const p = new URLSearchParams(location.search);
@@ -59,6 +71,21 @@ function renderHeader() {
   document.querySelector('#calendar thead').appendChild(headRow);
 }
 
+// 置き換え：offset版は使わない
+function calcMonthInfoFromYYYYMM(monthStr){
+  const [yy, mm] = monthStr.split('-').map(Number);
+  const year  = yy;
+  const month = mm - 1;                         // 0-11
+  const first = new Date(year, month, 1);
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  // 日曜(0)→6, 月曜(1)→0 …（＝月曜始まり）
+  const firstWeekday = (first.getDay() + 6) % 7;
+
+  const numWeeks = Math.ceil((firstWeekday + totalDays) / 7);
+  return { year, month, firstWeekday, totalDays, numWeeks };
+}
+
 // 月曜始まりのカレンダー情報（※ズレ防止の根っこ）
 function calcMonthInfo(offset) {
   const now = new Date();
@@ -76,8 +103,9 @@ function calcMonthInfo(offset) {
 }
 
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
-function renderCalendar(offset = 0) {
-  const { year, month, firstWeekday, totalDays, numWeeks } = calcMonthInfo(offset);
+function renderCalendar(){
+  const { year, month, firstWeekday, totalDays, numWeeks } =
+    calcMonthInfoFromYYYYMM(state.monthStr);
 
   updateTitle(year, month);
   clearTable();
@@ -102,15 +130,12 @@ function renderCalendar(offset = 0) {
       if (dayNum >= 1 && dayNum <= totalDays) {
         td.textContent = dayNum;
 
-        // 曜日色
         if (d === 5) td.classList.add('saturday');
         if (d === 6) td.classList.add('sunday');
 
-        // 祝日ハイライト
         const label = `${month + 1}/${dayNum}`;
         if (holidaySet.has(label)) td.classList.add('holiday');
 
-        // 今日
         const today = new Date();
         if (year === today.getFullYear() && month === today.getMonth() && dayNum === today.getDate()) {
           td.classList.add('today-cell');
@@ -120,14 +145,15 @@ function renderCalendar(offset = 0) {
     }
     tbody.appendChild(trWeek);
 
-    // (b) その週の “全科で医師が入っていない日” を先に判定
+    // (b) 週内の “全科で医師がいない日” 判定
     const dayHasDoctor = {};
     for (let d = 0; d < 7; d++) {
       const dayNum = w * 7 + d - firstWeekday + 1;
       if (dayNum < 1 || dayNum > totalDays) continue;
 
-      // 👇 キー生成を “日付の実曜日” で統一（ズレの根治）
+      // ← 実日付から曜日を算出する“正”のキー生成（ズレ根治）
       const key = `${month + 1}/${dayNum}(${jpDow(new Date(year, month, dayNum))})`;
+
       dayHasDoctor[dayNum] = rooms.some(room => {
         const e = schedule[room]?.[key];
         const disp = e?.displayName || e?.name || '';
@@ -135,7 +161,7 @@ function renderCalendar(offset = 0) {
       });
     }
 
-    // (c) 診療科ごと
+    // (c) 診療科行
     rooms.forEach((room, rIndex) => {
       const trRoom = document.createElement('tr');
 
@@ -146,50 +172,47 @@ function renderCalendar(offset = 0) {
       for (let d = 0; d < 7; d++) {
         const td = document.createElement('td');
         const dayNum = w * 7 + d - firstWeekday + 1;
+        if (dayNum < 1 || dayNum > totalDays) continue;
 
-        if (dayNum >= 1 && dayNum <= totalDays) {
-          const key = `${month + 1}/${dayNum}(${jpDow(new Date(year, month, dayNum))})`;
-          const e = schedule[room]?.[key];
+        const key = `${month + 1}/${dayNum}(${jpDow(new Date(year, month, dayNum))})`;
+        const e = schedule[room]?.[key];
 
-          // その日が “全科休診” の場合：最上段だけ 休診日 (rowSpan)
-          if (!dayHasDoctor[dayNum]) {
-            if (rIndex === 0) {
-              td.textContent = "休診日";
-              td.classList.add("kyushin-cell");
-              td.setAttribute("aria-label", `${month + 1}/${dayNum} 休診日`);
-              td.rowSpan = rooms.length;
-              trRoom.appendChild(td);
-            }
-            continue;
+        if (!dayHasDoctor[dayNum]) {
+          if (rIndex === 0) {
+            td.textContent = "休診日";
+            td.classList.add("kyushin-cell");
+            td.setAttribute("aria-label", `${month + 1}/${dayNum} 休診日`);
+            td.rowSpan = rooms.length;
+            trRoom.appendChild(td);
           }
+          continue;
+        }
 
-          if (e && (e.name || e.displayName)) {
-            const t = `${e.timeFrom || ""}${e.timeTo ? '～' + e.timeTo : ''}`;
-            td.innerHTML =
-              `<div><span>${t}</span></div>
-               <div><span${e.sex === "女" ? ' class="female"' : ''}>${e.displayName || e.name}</span>${e.tongueMark ? ` <span title="舌下">${e.tongueMark}</span>` : ''}</div>`;
+        if (e && (e.name || e.displayName)) {
+          const t = `${e.timeFrom || ""}${e.timeTo ? '～' + e.timeTo : ''}`;
+          td.innerHTML =
+            `<div><span>${t}</span></div>
+             <div><span${e.sex === "女" ? ' class="female"' : ''}>${e.displayName || e.name}</span>${e.tongueMark ? ` <span title="舌下">${e.tongueMark}</span>` : ''}</div>`;
 
-            if (e.displayName === "休診") td.classList.add("kyushin-cell");
-            if (e.displayName === "調整中") td.classList.add("cyousei-cell");
+          if (e.displayName === "休診") td.classList.add("kyushin-cell");
+          if (e.displayName === "調整中") td.classList.add("cyousei-cell");
 
-            if (e.displayName !== "休診") {
-              td.style.cursor = "zoom-in";
-              td.addEventListener('click', () => {
-                showCellModal({
-                  date: `${month + 1}/${dayNum}`,
-                  dept: room,
-                  time: t,
-                  name: e.displayName || e.name,
-                  tongue: e.tongueMark
-                });
+          if (e.displayName !== "休診") {
+            td.style.cursor = "zoom-in";
+            td.addEventListener('click', () => {
+              showCellModal({
+                date: `${month + 1}/${dayNum}`,
+                dept: room,
+                time: t,
+                name: e.displayName || e.name,
+                tongue: e.tongueMark
               });
-            }
-          } else {
-            // その日全体としては医師がいる → “–”
-            td.textContent = dayHasDoctor[dayNum] ? "−" : "休診";
-            if (!dayHasDoctor[dayNum]) td.classList.add("kyushin-cell");
-            td.setAttribute("aria-label", `${month + 1}/${dayNum} ${room} ${td.textContent}`);
+            });
           }
+        } else {
+          td.textContent = dayHasDoctor[dayNum] ? "−" : "休診";
+          if (!dayHasDoctor[dayNum]) td.classList.add("kyushin-cell");
+          td.setAttribute("aria-label", `${month + 1}/${dayNum} ${room} ${td.textContent}`);
         }
 
         trRoom.appendChild(td);
@@ -228,35 +251,27 @@ function showCellModal({ date, dept, time, name, tongue }) {
 }
 
 // ===== データ取得（google.script.run → fetch に置換） =====
-async function fetchSchedule(offset = 0) {
+async function fetchSchedule(){
   const url = new URL(GAS_API);
   url.searchParams.set('action', 'schedule');
   url.searchParams.set('clinic', clinicCode);
+  url.searchParams.set('month', state.monthStr); // ★ここ重要
+  url.searchParams.set('t', Date.now());
 
-  // “GAS側で今月/offset解釈” に寄せるため、monthは渡さない運用
-  // 必要なら以下を有効化：
-  // const base = new Date();
-  // const monthStr = yyyymm(new Date(base.getFullYear(), base.getMonth() + offset, 1));
-  // url.searchParams.set('month', monthStr);
-
-  url.searchParams.set('t', Date.now()); // キャッシュ回避
-
-  const res = await fetch(url.toString(), { method: 'GET' });
-  if (!res.ok) throw new Error('API error ' + res.status);
+  const res = await fetch(url.toString());
   const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'API response not ok');
+  if (!json.ok) throw new Error(json.error || 'API error');
 
-  // GASのJSONと同じ取り回し
-  clinicName     = json.clinicName || '';
-  const data     = json.data || {};
-  dates          = Array.isArray(data.dates) ? data.dates : [];
-  rooms          = Array.isArray(data.rooms) ? data.rooms.slice() : [];
-  schedule       = data.schedule || {};
-  holidays       = Array.isArray(data.holidays) ? data.holidays : [];
-  minYearMonth   = data.minYearMonth || "";
-  maxYearMonth   = data.maxYearMonth || "";
+  clinicName   = json.clinicName || '';
+  const data   = json.data || {};
+  dates        = data.dates || [];
+  rooms        = (data.rooms || []).slice();
+  schedule     = data.schedule || {};
+  holidays     = data.holidays || [];
+  minYearMonth = data.minYearMonth || "";
+  maxYearMonth = data.maxYearMonth || "";
 
-  // 表示順
+  // 並び順
   rooms.sort((a,b)=>{
     const ia = DEPT_ORDER.indexOf(a), ib = DEPT_ORDER.indexOf(b);
     if (ia===-1 && ib===-1) return a.localeCompare(b,'ja');
@@ -264,33 +279,32 @@ async function fetchSchedule(offset = 0) {
     return ia - ib;
   });
 
-  // 前後ボタンの活性/非活性（min/maxはあれば使う）
-  const now = new Date();
-  const base = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-  const thisYM = yyyymm(base);
-  const prevBtn = document.getElementById('prevMonth');
-  const nextBtn = document.getElementById('nextMonth');
-  prevBtn.disabled = !!minYearMonth && (thisYM <= minYearMonth);
-  nextBtn.disabled = !!maxYearMonth && (thisYM >= maxYearMonth);
+  // 前後ボタンの活性/非活性
+  document.getElementById('prevMonth').disabled = !!minYearMonth && (state.monthStr <= minYearMonth);
+  document.getElementById('nextMonth').disabled = !!maxYearMonth && (state.monthStr >= maxYearMonth);
 
-  renderCalendar(offset);
+  renderCalendar();
 }
 
 // ===== 起動処理（GAS版の流儀に合わせた最小UI） =====
 document.addEventListener('DOMContentLoaded', () => {
-  clinicCode = getClinicFromURL();
-  setClinicToURL(clinicCode); // URLを正規化
+  clinicCode     = getClinicFromURL();
+  setClinicToURL(clinicCode);
+  state.monthStr = yyyymm(new Date());             // ★初期は今月
 
-  // 月移動
-  document.getElementById('prevMonth').addEventListener('click', () => {
-    monthOffset -= 1;
-    fetchSchedule(monthOffset).catch(e => alert(e));
-  });
-  document.getElementById('nextMonth').addEventListener('click', () => {
-    monthOffset += 1;
-    fetchSchedule(monthOffset).catch(e => alert(e));
-  });
+  // 月移動：state.monthStr を直接変更
+  document.getElementById('prevMonth').onclick = ()=>{
+    const [y,m] = state.monthStr.split('-').map(Number);
+    state.monthStr = yyyymm(new Date(y, m-2, 1));  // 前月
+    fetchSchedule().catch(e => alert(e));
+  };
+  document.getElementById('nextMonth').onclick = ()=>{
+    const [y,m] = state.monthStr.split('-').map(Number);
+    state.monthStr = yyyymm(new Date(y, m, 1));    // 翌月
+    fetchSchedule().catch(e => alert(e));
+  };
 
   // 初回
-  fetchSchedule(monthOffset).catch(e => alert(e));
+  fetchSchedule().catch(e => alert(e));
 });
+
