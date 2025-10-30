@@ -18,6 +18,10 @@ let state = {
 };
 
 // ===== Util =====
+function jpDowByDate(y, m0, d) {
+  return ["日","月","火","水","木","金","土"][ new Date(y, m0, d).getDay() ];
+}
+
 function getClinicFromURL() {
   const p = new URLSearchParams(location.search);
   const v = (p.get('clinic') || '').trim();
