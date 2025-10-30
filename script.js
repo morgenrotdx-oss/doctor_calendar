@@ -275,6 +275,8 @@ async function fetchSchedule(){
   document.getElementById('nextMonth').disabled = !!maxYearMonth && (state.monthStr >= maxYearMonth);
 
   renderCalendar();
+  // ← これを追加
+  window.__debugCalendarLayout && window.__debugCalendarLayout();
 }
 
 // ===== 起動処理（GAS版の流儀に合わせた最小UI） =====
@@ -299,17 +301,30 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchSchedule().catch(e => alert(e));
 });
 
-// ▼ デバッグ：最初の7日分のキー一致を検証
-(function(){
-  const [yy, mm] = (state.monthStr||'').split('-').map(Number);
-  const m0 = mm - 1;
-  const { firstWeekday } = calcMonthInfoFromYYYYMM_JST(state.monthStr);
-  const days = Array.from({length:7},(_,i)=>i+1);
-  console.log('DBG monthStr=', state.monthStr, 'firstWeekday(Mon=0)=', firstWeekday);
-  const r0 = rooms[0] || '(no room)';
-  for (const d of days) {
-    const key = `${mm}/${d}(${jpDowJST(yy, m0, d)})`;
-    const hit = rooms.map(r => !!(schedule[r] && schedule[r][key]));
-    console.log(`${mm}/${d} -> ${jpDowJST(yy,m0,d)}  room=${r0}  key="${key}"  hits=`, hit);
+// === デバッグ: 先頭1週間の横並び・キー一致を画面に出す ===
+window.__debugCalendarLayout = function(){
+  const box = document.getElementById('__cal_dbg') || document.createElement('div');
+  box.id = '__cal_dbg';
+  Object.assign(box.style, {
+    position:'fixed', right:'10px', bottom:'10px', zIndex:9999,
+    background:'#000', color:'#0f0', padding:'8px 10px',
+    font:'12px/1.4 monospace', maxHeight:'40vh', overflow:'auto',
+    borderRadius:'6px', opacity:'0.9'
+  });
+  const { year, month, firstWeekday, totalDays } = calcMonthInfoFromYYYYMM_JST(state.monthStr);
+  const m1 = month + 1;
+
+  // rooms[0] から 1日〜7日のキー一致を検証
+  const r0 = rooms[0];
+  const wd = ['日','月','火','水','木','金','土'];
+  const lines = [];
+  lines.push(`month=${state.monthStr} firstWeekday=${firstWeekday}`);
+  for (let d=1; d<=Math.min(7,totalDays); d++){
+    const key = `${m1}/${d}(${wd[new Date(Date.UTC(year, month, d, 9)).getUTCDay()]})`;
+    const hit = !!(schedule[r0] && schedule[r0][key]);
+    lines.push(`${key}  ->  ${hit ? '✔ hit' : '✖ miss'}`);
   }
-})();
+  box.textContent = lines.join('\n');
+  document.body.appendChild(box);
+};
+
