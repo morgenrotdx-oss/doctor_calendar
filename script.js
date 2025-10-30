@@ -86,9 +86,29 @@ function renderHeader() {
 
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
-  const { year, month, firstWeekday, totalDays, numWeeks } =
+  // 1) まずは通常どおり JST で計算
+  let { year, month, firstWeekday, totalDays, numWeeks } =
     calcMonthInfoFromYYYYMM_JST(state.monthStr);
 
+  // 2) サーバーのキーで 1日の曜日を“上書き”
+  //   rooms[0] の schedule を見て "<今月>/1(○)" の○から曜日を決定
+  const monStartMap = { '月':0, '火':1, '水':2, '木':3, '金':4, '土':5, '日':6 };
+  (function tryOverrideStartCol() {
+    if (!rooms.length) return;
+    const r0 = rooms[0];
+    const m1 = month + 1; // 1-12
+    const re = new RegExp(`^${m1}/1\\(([日月火水木金土])\\)$`);
+    const keys = Object.keys((schedule[r0]||{}));
+    for (const k of keys) {
+      const m = k.match(re);
+      if (m) {
+        const idx = monStartMap[m[1]];
+        if (typeof idx === 'number') firstWeekday = idx;  // ← ここで上書き
+        break;
+      }
+    }
+  })();
+  
   updateTitle(year, month);
   clearTable();
   renderHeader();
