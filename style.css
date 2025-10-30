@@ -1,42 +1,319 @@
-/* ベース */
-body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;margin:12px 16px}
-.page-head{display:grid;gap:10px}
-.controls{display:flex;gap:8px;align-items:center}
-button{cursor:pointer}
 
-/* タイトル&月ナビ（GAS風） */
-.month-nav{display:flex;gap:12px;align-items:center}
-.month-nav h2{margin:0;font-size:18px;font-weight:700}
-.nav-btn{border:1px solid #d0d7de;border-radius:6px;background:#fff;padding:4px 8px;line-height:1}
-.nav-btn:active{transform:translateY(1px)}
+/* ====== ベース・レイアウト ====== */
+body {
+  font-family: "Meiryo", sans-serif;
+  padding: 16px;
+  margin: 0;
+  background: #f0f0f5;
+  font-size: 16px;
+}
+h2 {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+#tableTitle {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 1.35rem;
+  font-weight: bold;
+}
 
-/* 表 */
-.calendar-container{overflow-x:auto;margin-top:10px}
-table{border-collapse:collapse;width:100%;min-width:980px;table-layout:fixed}
-th,td{border:1px solid #cfd8dc;padding:8px 10px;vertical-align:top}
-thead th{background:#eef5fb;text-align:center;font-weight:700}
+/* ====== カレンダー外枠・ナビ ====== */
+.calendar-container {
+  overflow-x: auto;
+}
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.month-nav-btn {
+  font-size: 1.5rem;
+  padding: 0 1rem;
+  border: none;
+  background: #f4f4f4;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.month-nav-btn:disabled {
+  background: #e0e0e0;
+  color: #aaa;
+  cursor: not-allowed;
+}
 
-/* 左端（診療科列）と週ごとの帯色 */
-tbody td:first-child, thead th:first-child{width:150px;white-space:nowrap;background:#f6e7c2;font-weight:700}
-.week-band{background:#e6f1f8}        /* 週帯（科名セル） */
-.date-row td{background:#eef5fb}      /* 日付行帯 */
+/* ====== カレンダー本体テーブル ====== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 6px;
+  text-align: center;
+  vertical-align: middle;
+  min-width: 40px;
+  white-space: normal;
+  word-break: break-all;
+  font-size: 14px;
+}
+th {
+  background-color: #e6e6e6;
+}
+@media (max-width: 600px) {
+  th, td {
+    font-size: 10px;
+    min-width: 24px;
+    padding: 4px 2px;
+  }
+  h2 {
+    font-size: 1rem;
+  }
+}
 
-/* 曜日色・状態色 */
-.saturday{color:#1b66d1}
-.sunday,.holiday{color:#d11b1b}
-.today-cell{outline:2px solid #9e9e9e;outline-offset:-2px}
-.kyushin-cell{background:#f0f0f0;color:#666;text-align:center}
-.cyousei-cell{background:#fff2cc}
-.female{color:#d11b1b}
+/* ====== 曜日ヘッダ ====== */
+.sunday {
+  color: red;
+}
+.saturday {
+  color: blue;
+}
 
-/* セル内行間 */
-td>div{line-height:1.35}
-td>div:first-child{font-size:12px;opacity:.85}
-td>div:last-child{font-size:14px}
+/* ====== 週・診療科・日付セル ====== */
+/* 週ラベルセル */
+.week-row td:first-child {
+  background-color: #e1f5fe;
+  font-weight: bold;
+}
+/* 診療科名セル */
+#calendar td:first-child {
+  background-color: #fceabb;
+  font-weight: bold;
+}
+#calendar tr.date-row td:first-child {
+  background: #fff !important; /* ←日付行の左端セルだけ白で上書き */
+}
 
-/* ヘッダの土日色（GAS風） */
-thead th:nth-child(7){color:#1b66d1}  /* 土 */
-thead th:nth-child(8){color:#d11b1b}  /* 日 */
+/* 週の区切り線を太く */
+tr.week-row {
+  border-top: 3px solid #aaa !important;
+}
 
-#meta{color:#666;display:block;margin-top:6px}
-.note{color:#666;font-size:12px}
+
+/* ====== 特別な日付セル ====== */
+/* 医師セルの「今日」列：白背景で太枠だけ */
+#calendar tr:not(.date-row) td.today-cell {
+  background: #fff !important;
+  border: 2.5px solid #ffb300 !important;
+  z-index: 1;
+}
+
+/* 日付行（tr.date-row）にだけ水色背景 */
+#calendar tr.date-row td:not(:first-child) {
+  background-color: #e6f7ff !important;
+  font-weight: bold;
+  font-size: 1.2em;
+}
+
+#calendar tr.date-row td.today-cell {
+  background: #ffb300 !important;
+  color: #fff !important;
+  font-weight: bold;
+  border: 3px solid #ff9800 !important;
+  box-shadow: 0 0 8px #ff980080;
+  font-size: 1.35em;
+  z-index: 9;
+}
+
+
+/* データ行（医師名・時間など）は白背景。休診セルだけ除外 */
+#calendar tr:not(.date-row) td:not(:first-child):not(.kyushin-cell) {
+  background-color: #fff !important;
+}
+
+/* 休診セルだけグレーにする。上の直後に書くこと！ */
+#calendar tr:not(.date-row) td.kyushin-cell {
+  background-color: #e0e0e0 !important;
+  color: #888 !important;
+  cursor: default !important;
+  pointer-events: none;
+}
+
+/* 調整中セルだけ赤く目立たせる（特異度アップ版） */
+#calendar tr:not(.date-row) td:not(:first-child).cyousei-cell {
+  background-color: #e53935 !important;
+  color:            #fff     !important;
+  font-weight:      bold     !important;
+  cursor:           default  !important;
+}
+
+/* ====== 祝日セル ====== */
+/* 祝日セル全体：強調 */
+#calendar td.holiday {
+  background: #e53935 !important;
+  color: #fff !important;
+  font-weight: bold;
+}
+/* 週行の日付セルの祝日強調 */
+tr.week-row td.holiday {
+  color: #d32f2f !important;
+  font-weight: bold;
+}
+
+/* ====== 月切替タブ（※現在未使用） ====== */
+.month-tabs {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+.tab {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  background-color: white;
+  cursor: pointer;
+  border-radius: 6px;
+  font-weight: bold;
+}
+.tab.active {
+  background-color: #1976d2;
+  color: white;
+}
+
+/* ====== その他 ====== */
+/* 女性医師名 */
+.female {
+  color: red;
+}
+/* カレンダー注釈 */
+.calendar-note {
+  margin: 18px 0 0 0;
+  font-size: 0.97em;
+  color: #555;
+  background: #fffbe8;
+  border-left: 4px solid #ffe082;
+  padding: 10px 12px;
+  border-radius: 5px;
+  max-width: 75vw;
+  line-height: 1.6;
+}
+
+
+/* 医師名拡大モーダル用 */
+/* 追加・修正 */
+.cell-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.19);
+  padding: 24px 18px;
+  z-index: 2000;
+  min-width: 180px;
+  max-width: 250px;
+  text-align: center;
+  font-size: 1.25em;
+}
+.cell-modal .close-btn {
+  position: absolute;
+  top: 6px; right: 10px;
+  font-size: 1.3em;
+  cursor: pointer;
+  color: #888;
+}
+.cell-modal .modal-label {
+  display: block;
+  font-size: 0.85em;
+  margin-bottom: 3px;
+  color: #999;
+}
+.cell-modal .modal-value {
+  font-size: 1.1em;
+  font-weight: bold;
+  margin-bottom: 9px;
+}
+
+.cell-modal-content {
+  background: #fff; padding: 24px 28px; border-radius: 12px; font-size: 1.7rem;
+  max-width: 85vw; word-break: break-all; text-align: center;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.22);
+}
+@media (max-width: 600px) {
+  .cell-modal-content {
+    font-size: 1.25rem;
+    padding: 15px 10px;
+    max-width: 94vw;
+  }
+}
+
+/* --- カレンダー拡大モーダル用スタイル --- */
+.cell-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #f8e7ff;
+  border: 1.5px solid #ce93d8;
+  border-radius: 14px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.19);
+  padding: 24px 18px;
+  z-index: 2000;
+  min-width: 180px;
+  max-width: 250px;
+  text-align: center;
+  font-size: 1.25em;
+}
+
+.calendar-modal .label {
+  font-size: 1.1em;
+  color: #1976d2;
+  font-weight: bold;
+  margin-bottom: 0.5em;
+  display: block;
+}
+.calendar-modal .value {
+  font-size: 1.2em;
+  color: #222;
+  margin-bottom: 0.7em;
+  font-weight: normal;
+}
+.calendar-modal .close-btn {
+  position: absolute; right: 1em; top: 1em;
+  background: none;
+  border: none;
+  font-size: 1.8em;
+  color: #888;
+  cursor: pointer;
+}
+
+/* フェードアウト用 */
+.cell-modal.fade-out {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+
+/* 日付行（日付が並ぶ1行目ごと）の土曜・日曜を色分け */
+#calendar tr.date-row td.saturday {
+  color: #1976d2 !important;  /* 土曜は青 */
+}
+#calendar tr.date-row td.sunday {
+  color: #e53935 !important;  /* 日曜は赤 */
+}
+
+/* 今日セルが土曜・日曜なら色を優先的に上書き（背景黄色＋文字色青/赤） */
+#calendar tr.date-row td.today-cell.saturday {
+  color: #1976d2 !important;
+  background: #ffe066 !important;
+  border: 3px solid #ff9800 !important;
+}
+#calendar tr.date-row td.today-cell.sunday {
+  color: #e53935 !important;
+  background: #ffe066 !important;
+  border: 3px solid #ff9800 !important;
+}
