@@ -10,7 +10,6 @@ const DEPT_ORDER = [
 ];
 
 // GAS版グローバルに相当
-let dates = [];
 let rooms = [];
 let schedule = {};
 let holidays = [];
@@ -19,22 +18,37 @@ let clinicName = "";        // APIから取得
 let minYearMonth = "";      // "YYYY-MM"
 let maxYearMonth = "";      // "YYYY-MM"
 
-// 内部状態：表示中のオフセット（0=今月）
-let monthOffset = 0;
-
 let state = {
-  clinic: null,
   monthStr: null,   // ← これを使う
   clinicName: "",
-  dates: [],
   rooms: [],
   schedule: {},
-  holidays: [],
-  minYM: null,
-  maxYM: null
+  holidays: []
 };
 
 // ===== Util =====
+// === 追加：JST(UTC+9) の曜日を返す ===
+function jpDowJST(y, m0, d) {
+  // m0は0始まりの月
+  const wd = new Date(Date.UTC(y, m0, d, 9)).getUTCDay(); // JSTでの曜日
+  return ["日","月","火","水","木","金","土"][wd];
+}
+
+// === 追加：JSTで「月曜始まりの月情報」を返す（YYYY-MM版） ===
+function calcMonthInfoFromYYYYMM_JST(monthStr){
+  const [yy, mm] = monthStr.split('-').map(Number);
+  const year  = yy;
+  const month = mm - 1; // 0-11
+
+  const firstUTCJST = new Date(Date.UTC(year, month, 1, 9));
+  const sunday0 = firstUTCJST.getUTCDay();              // JSTでの 0(日)〜6(土)
+  const firstWeekday = (sunday0 + 6) % 7;               // 月曜起点に変換
+
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const numWeeks  = Math.ceil((firstWeekday + totalDays) / 7);
+  return { year, month, firstWeekday, totalDays, numWeeks };
+}
+
 function getClinicFromURL() {
   const p = new URLSearchParams(location.search);
   const v = (p.get('clinic') || '').trim();
@@ -46,7 +60,6 @@ function setClinicToURL(v) {
   history.replaceState(null, '', u);
 }
 function yyyymm(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-function jpDow(dateObj) { return ["日","月","火","水","木","金","土"][dateObj.getDay()]; }
 
 // ===== 表示系（GAS版と同じ関数名/構造） =====
 function updateTitle(year, month) {
@@ -71,41 +84,10 @@ function renderHeader() {
   document.querySelector('#calendar thead').appendChild(headRow);
 }
 
-// 置き換え：offset版は使わない
-function calcMonthInfoFromYYYYMM(monthStr){
-  const [yy, mm] = monthStr.split('-').map(Number);
-  const year  = yy;
-  const month = mm - 1;                         // 0-11
-  const first = new Date(year, month, 1);
-  const totalDays = new Date(year, month + 1, 0).getDate();
-
-  // 日曜(0)→6, 月曜(1)→0 …（＝月曜始まり）
-  const firstWeekday = (first.getDay() + 6) % 7;
-
-  const numWeeks = Math.ceil((firstWeekday + totalDays) / 7);
-  return { year, month, firstWeekday, totalDays, numWeeks };
-}
-
-// 月曜始まりのカレンダー情報（※ズレ防止の根っこ）
-function calcMonthInfo(offset) {
-  const now = new Date();
-  const baseDate = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-  const year  = baseDate.getFullYear();
-  const month = baseDate.getMonth();           // 0-11
-
-  // 日曜(0)→6, 月曜(1)→0 …（＝月曜起点）
-  const sunday0 = new Date(year, month, 1).getDay();
-  const firstWeekday = (sunday0 + 6) % 7;
-
-  const totalDays = new Date(year, month + 1, 0).getDate();
-  const numWeeks  = Math.ceil((firstWeekday + totalDays) / 7);
-  return { year, month, firstWeekday, totalDays, numWeeks };
-}
-
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
   const { year, month, firstWeekday, totalDays, numWeeks } =
-    calcMonthInfoFromYYYYMM(state.monthStr);
+    calcMonthInfoFromYYYYMM_JST(state.monthStr);
 
   updateTitle(year, month);
   clearTable();
@@ -136,8 +118,11 @@ function renderCalendar(){
         const label = `${month + 1}/${dayNum}`;
         if (holidaySet.has(label)) td.classList.add('holiday');
 
-        const today = new Date();
-        if (year === today.getFullYear() && month === today.getMonth() && dayNum === today.getDate()) {
+        const nowJST = new Date(Date.now() + (9 * 60 * 60 * 1000));
+        const todayY = nowJST.getUTCFullYear();
+        const todayM = nowJST.getUTCMonth();
+        const todayD = nowJST.getUTCDate();
+        if (year === todayY && month === todayM && dayNum === todayD) {
           td.classList.add('today-cell');
         }
       }
@@ -152,7 +137,7 @@ function renderCalendar(){
       if (dayNum < 1 || dayNum > totalDays) continue;
 
       // ← 実日付から曜日を算出する“正”のキー生成（ズレ根治）
-      const key = `${month + 1}/${dayNum}(${jpDow(new Date(year, month, dayNum))})`;
+      const key = `${month + 1}/${dayNum}(${jpDowJST(year, month, dayNum)})`;
 
       dayHasDoctor[dayNum] = rooms.some(room => {
         const e = schedule[room]?.[key];
@@ -174,7 +159,8 @@ function renderCalendar(){
         const dayNum = w * 7 + d - firstWeekday + 1;
         if (dayNum < 1 || dayNum > totalDays) continue;
 
-        const key = `${month + 1}/${dayNum}(${jpDow(new Date(year, month, dayNum))})`;
+        const key = `${month + 1}/${dayNum}(${jpDowJST(year, month, dayNum)})`;
+        
         const e = schedule[room]?.[key];
 
         if (!dayHasDoctor[dayNum]) {
