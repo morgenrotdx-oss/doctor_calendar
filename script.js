@@ -299,3 +299,17 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchSchedule().catch(e => alert(e));
 });
 
+// ▼ デバッグ：最初の7日分のキー一致を検証
+(function(){
+  const [yy, mm] = (state.monthStr||'').split('-').map(Number);
+  const m0 = mm - 1;
+  const { firstWeekday } = calcMonthInfoFromYYYYMM_JST(state.monthStr);
+  const days = Array.from({length:7},(_,i)=>i+1);
+  console.log('DBG monthStr=', state.monthStr, 'firstWeekday(Mon=0)=', firstWeekday);
+  const r0 = rooms[0] || '(no room)';
+  for (const d of days) {
+    const key = `${mm}/${d}(${jpDowJST(yy, m0, d)})`;
+    const hit = rooms.map(r => !!(schedule[r] && schedule[r][key]));
+    console.log(`${mm}/${d} -> ${jpDowJST(yy,m0,d)}  room=${r0}  key="${key}"  hits=`, hit);
+  }
+})();
