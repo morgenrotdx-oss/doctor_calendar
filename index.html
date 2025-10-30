@@ -1,35 +1,62 @@
 <!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>医師勤務カレンダー</title>
-<link rel="stylesheet" href="./style.css">
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>医師勤務表</title>
+  <!-- あなたの GAS で使っていた CSS を style.css にそのまま貼ってOK -->
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* 最低限のレイアウト（あなたのCSSが上書きします）*/
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; margin: 16px; }
+    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+    .toolbar .spacer { flex:1; }
+    .calendar-nav { display:flex; gap:8px; align-items:center; margin:8px 0 12px; }
+    #meta { color:#666; font-size:12px; margin:6px 0 12px; display:none; } /* デバッグ時に display:block; */
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border:1px solid #ddd; padding:8px; vertical-align:top; }
+    thead th { background:#f5f7fb; }
+    .saturday { color:#1a73e8; }
+    .sunday   { color:#d93025; }
+    .holiday  { background:#fff5f5; }
+    .today-cell { outline:2px solid #333; outline-offset:-2px; }
+    .kyushin-cell { background:#f0f0f0; color:#666; text-align:center; }
+    .cyousei-cell { background:#fff8e1; }
+    .week-band { background:#fafafa; white-space:nowrap; font-weight:600; }
+    .female { color:#d93025; } /* 女医は赤 */
+    .date-row td { background:#f9fbff; text-align:center; font-weight:600; }
+    .title { font-size:18px; font-weight:700; margin: 0 8px; }
+    button { cursor:pointer; }
+    input[type="text"] { padding:4px 6px; }
+  </style>
+</head>
+<body>
 
-<header class="page-head">
-  <h1>Doctor Calendar</h1>
-  <div class="controls">
+  <h1 style="margin:4px 0 12px;">Doctor Calendar</h1>
+
+  <div class="toolbar">
     <label>Clinic:
-      <input id="clinicInput" size="6" inputmode="numeric" pattern="[0-9]{3}">
+      <input id="clinicInput" type="text" size="6" inputmode="numeric" pattern="[0-9]{3}" />
     </label>
     <button id="reloadBtn">再読込</button>
+    <div class="spacer"></div>
   </div>
-  <!-- ここだけ入れ替え -->
-  <div class="month-nav">
-    <button id="prevMonth" class="nav-btn">◀</button>
-    <h2 id="tableTitle">Loading…</h2>
-    <button id="nextMonth" class="nav-btn">▶</button>
+
+  <div class="calendar-nav">
+    <button id="prevMonth" aria-label="前の月">◀</button>
+    <h2 id="tableTitle" class="title"></h2>
+    <button id="nextMonth" aria-label="次の月">▶</button>
   </div>
+
   <small id="meta"></small>
-</header>
 
-<div class="calendar-container">
-  <table id="calendar">
-    <thead></thead>
-    <tbody></tbody>
-  </table>
-</div>
+  <div class="calendar-container">
+    <table id="calendar">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
-<p class="note">
-  ※ 黒=男性・赤=女性　※ ◇/♦=舌下可　※ 灰=休診
-</p>
-
-<script src="./script.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
