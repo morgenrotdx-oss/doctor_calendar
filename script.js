@@ -146,27 +146,48 @@ function normalizeWeekChar(x) {
 
 // メイン描画（GAS版の renderCalendar と同じクラス名/HTML構造）
 function renderCalendar(){
-  // 0) monthStr を保証
   if (!state.monthStr || !/^\d{4}-\d{2}$/.test(state.monthStr)) {
     state.monthStr = yyyymm(new Date());
   }
 
-  // 1) JSTで基本形を算出
-  let { year, month, firstWeekday, totalDays, numWeeks } =
-    calcMonthInfoFromYYYYMM_JST(state.monthStr);
+  // 月情報（totalDays だけ使う）
+  let { year, month, totalDays } = calcMonthInfoFromYYYYMM_JST(state.monthStr);
 
-  // 2) サーバ基準の曜日テーブルを作る
+  // サーバ基準の曜日テーブル
   const youbiMap = inferWeekcharMapForMonth(year, month);
-  // ← ここを差し替え
-  const youbiOf = (d) => normalizeWeekChar(youbiMap.get(d) || jpDowJST(year, month, d));
-  
- // 3) 1日の曜日が取れていれば列開始をサーバ基準に上書き
-  const y1 = youbiMap.get(1);
-  if (y1 != null && WK_INDEX[y1] != null) {
-    firstWeekday = WK_INDEX[y1];
+  const youbiOf  = (d) => normalizeWeekChar(youbiMap.get(d) || jpDowJST(year, month, d));
+
+  // ====== ここから “列を曜日で確定させる” グリッド生成 ======
+  // weeks[weekIndex][col(0=月..6=日)] = { day, tok }
+  const weeks = [];
+  let week = new Array(7).fill(null);
+  // 1日の列位置をサーバ基準で確定
+  let col = WK_INDEX[youbiOf(1)];
+  // 1週目の空白を先頭に詰める
+  for (let i = 0; i < col; i++) week[i] = null;
+
+  for (let day = 1; day <= totalDays; day++) {
+    const tok = youbiOf(day);                // '月'〜'日'
+    const colExpected = WK_INDEX[tok];       // 列は常に曜日から決める
+
+    // 週をまたぐときは new row
+    if (day > 1 && colExpected <= col) {
+      weeks.push(week);
+      week = new Array(7).fill(null);
+    }
+    col = colExpected;
+    week[col] = { day, tok };
+    // 週末まで埋まったら push
+    if (col === 6) {
+      weeks.push(week);
+      week = new Array(7).fill(null);
+    }
   }
-  
-  // 4) 以降は従来通りだが、セルキー生成は必ず youbiOf(day) を使う
+  // 末尾の週を追加（途中で終わっていたら）
+  if (week.some(v => v !== null)) weeks.push(week);
+  // =======================================================
+
+  // ヘッダとタイトル
   updateTitle(year, month);
   clearTable();
   renderHeader();
@@ -174,117 +195,100 @@ function renderCalendar(){
   const holidaySet = new Set((holidays || []).map(h => h.split('(')[0]));
   const tbody = document.querySelector('#calendar tbody');
 
-  for (let w = 0; w < numWeeks; w++) {
-    // (a) 日付行
-    const trWeek = document.createElement('tr');
-    trWeek.classList.add('week-row','date-row');
-    const tdLabel = document.createElement('td'); tdLabel.textContent = '';
-    trWeek.appendChild(tdLabel);
+  // (a) 日付行（グリッドに合わせて確定位置に描画）
+  const trWeek = document.createElement('tr');
+  trWeek.classList.add('week-row', 'date-row');
+  const tdLabel = document.createElement('td'); tdLabel.textContent = '';
+  trWeek.appendChild(tdLabel);
 
-    for (let d = 0; d < 7; d++) {
-      const td = document.createElement('td');
-      const dayNum = w * 7 + d - firstWeekday + 1;
-      if (dayNum >= 1 && dayNum <= totalDays) {
-        td.textContent = dayNum;
-        if (d === 5) td.classList.add('saturday');
-        if (d === 6) td.classList.add('sunday');
-        const label = `${month + 1}/${dayNum}`;
-        if (holidaySet.has(label)) td.classList.add('holiday');
-
-        // 今日判定（JST）
-        const nowJST = new Date(Date.now() + 9*60*60*1000);
-        if (year === nowJST.getUTCFullYear() &&
-            month === nowJST.getUTCMonth() &&
-            dayNum === nowJST.getUTCDate()) {
-          td.classList.add('today-cell');
-        }
+  weeks[0].forEach((cell, d) => {
+    const td = document.createElement('td');
+    if (cell) {
+      td.textContent = cell.day;
+      if (d === 5) td.classList.add('saturday');
+      if (d === 6) td.classList.add('sunday');
+      const label = `${month + 1}/${cell.day}`;
+      if (holidaySet.has(label)) td.classList.add('holiday');
+      const nowJST = new Date(Date.now() + 9*60*60*1000);
+      if (year === nowJST.getUTCFullYear() && month === nowJST.getUTCMonth() && cell.day === nowJST.getUTCDate()) {
+        td.classList.add('today-cell');
       }
-      trWeek.appendChild(td);
     }
-    tbody.appendChild(trWeek);
+    trWeek.appendChild(td);
+  });
+  tbody.appendChild(trWeek);
 
-    // (b) 週内 “全科で医師0” 判定（キーは JP/EN 両対応）
+  // (b) 各週ごとに “全科で医師0” 判定 → (c) 各診療科行
+  weeks.forEach(weekCells => {
+    // その週の dayHasDoctor 判定
     const dayHasDoctor = {};
-    for (let d = 0; d < 7; d++) {
-      const dayNum = w * 7 + d - firstWeekday + 1;
-      if (dayNum < 1 || dayNum > totalDays) continue;
-    
-      const tok   = youbiOf(dayNum); // '水' など
-      const keyJP = `${month + 1}/${dayNum}(${tok})`;
-      const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;
-    
-      dayHasDoctor[dayNum] = rooms.some(room => {
-        const obj = schedule[room] || {};
-        const entry = obj[keyJP] || obj[keyEN];
-        const disp  = entry?.displayName || entry?.name || '';
+    weekCells.forEach((cell, d) => {
+      if (!cell) return;
+      const day = cell.day, tok = cell.tok;
+      const keyJP = `${month+1}/${day}(${tok})`;
+      const keyEN = `${month+1}/${day}(${JP2EN[tok] || tok})`;
+      dayHasDoctor[day] = rooms.some(room => {
+        const e = (schedule[room]?.[keyJP]) || (schedule[room]?.[keyEN]);
+        const disp = e?.displayName || e?.name || '';
         return !!disp && disp !== '休診';
       });
-    }
-    
-    // (c) 診療科行（キーはサーバの曜日！）
+    });
+
+    // 診療科ごとに行を描画
     rooms.forEach((room, rIndex) => {
       const trRoom = document.createElement('tr');
       const tdRoom = document.createElement('td');
-      tdRoom.textContent = room; trRoom.appendChild(tdRoom);
+      tdRoom.textContent = room;
+      trRoom.appendChild(tdRoom);
 
-      for (let d = 0; d < 7; d++) {
+      weekCells.forEach((cell, d) => {
         const td = document.createElement('td');
-        const dayNum = w * 7 + d - firstWeekday + 1;
-        // ★ 月の外は「空<td>をappendしてからcontinue」
-        if (dayNum < 1 || dayNum > totalDays) {
-          trRoom.appendChild(td);   // 空セルを入れる（クラス付けたければ td.classList.add('empty') など）
-          continue;
-        }
-        const tok   = youbiOf(dayNum); // '水'
-        const keyJP = `${month + 1}/${dayNum}(${tok})`;
-        const keyEN = `${month + 1}/${dayNum}(${JP2EN[tok] || tok})`;
-      
-        // ★ ここを1回の宣言に統一（重複していた const e を排除）
+
+        if (!cell) { trRoom.appendChild(td); return; } // 月外は空セル
+        const day = cell.day, tok = cell.tok;
+        const keyJP = `${month+1}/${day}(${tok})`;
+        const keyEN = `${month+1}/${day}(${JP2EN[tok] || tok})`;
         const entry = (schedule[room]?.[keyJP]) || (schedule[room]?.[keyEN]);
-      
-        if (!dayHasDoctor[dayNum]) {
+
+        if (!dayHasDoctor[day]) {
           if (rIndex === 0) {
             td.textContent = '休診日';
             td.classList.add('kyushin-cell');
-            td.setAttribute('aria-label', `${month+1}/${dayNum} 休診日`);
+            td.setAttribute('aria-label', `${month+1}/${day} 休診日`);
             td.rowSpan = rooms.length;
             trRoom.appendChild(td);
           }
-          continue;
+          return; // 他の診療科はこの列セルを追加しない（rowSpan に吸収）
         }
-      
+
         if (entry && (entry.name || entry.displayName)) {
           const t = `${entry.timeFrom || ''}${entry.timeTo ? '～' + entry.timeTo : ''}`;
           td.innerHTML =
             `<div><span>${t}</span></div>
              <div><span${entry.sex==='女' ? ' class="female"':''}>${entry.displayName || entry.name}</span>${entry.tongueMark ? ` <span title="舌下">${entry.tongueMark}</span>`:''}</div>`;
-      
           if (entry.displayName === '休診') td.classList.add('kyushin-cell');
           if (entry.displayName === '調整中') td.classList.add('cyousei-cell');
-      
           if (entry.displayName !== '休診') {
             td.style.cursor = 'zoom-in';
             td.addEventListener('click', () => {
               showCellModal({
-                date: `${month+1}/${dayNum}`,
-                dept: room,
-                time: t,
-                name: entry.displayName || entry.name,
-                tongue: entry.tongueMark
+                date: `${month+1}/${day}`,
+                dept: room, time: t,
+                name: entry.displayName || entry.name, tongue: entry.tongueMark
               });
             });
           }
         } else {
-          td.textContent = dayHasDoctor[dayNum] ? '−' : '休診';
-          if (!dayHasDoctor[dayNum]) td.classList.add('kyushin-cell');
-          td.setAttribute('aria-label', `${month+1}/${dayNum} ${room} ${td.textContent}`);
+          td.textContent = dayHasDoctor[day] ? '−' : '休診';
+          if (!dayHasDoctor[day]) td.classList.add('kyushin-cell');
+          td.setAttribute('aria-label', `${month+1}/${day} ${room} ${td.textContent}`);
         }
-      
         trRoom.appendChild(td);
-      }
+      });
+
       tbody.appendChild(trRoom);
     });
-  }
+  });
 }
 
 // モーダル（GAS版と同DOM/クラス）
