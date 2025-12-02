@@ -1,5 +1,6 @@
 // ===== 設定 =====
-const GAS_API = 'https://script.google.com/macros/s/AKfycbyWf9oxetqrRGTBipHJmw29s2_bscP2W-gpcEaThKPYGLWyQosmB-7Eoj4vIksBv5-UMA/exec';
+//const GAS_API = 'https://script.google.com/macros/s/AKfycbyWf9oxetqrRGTBipHJmw29s2_bscP2W-gpcEaThKPYGLWyQosmB-7Eoj4vIksBv5-UMA/exec';
+const GAS_API = 'https://script.google.com/macros/s/AKfycbyqBDlrQTiiKPT86BuirJV6W__7z9_vsNOIA0iPmmbtxkQRCu6EU3HQWyN54ach_5PaGw/exec';
 
 // ===== 既存GASのJSと同じ定義 =====
 const WEEKDAYS = ["月","火","水","木","金","土","日"];
