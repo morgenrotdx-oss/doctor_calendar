@@ -283,11 +283,15 @@ function renderCalendar(){
             `<div><span>${t}</span></div>
              <div><span${entry.sex==='女' ? ' class="female"':''}>${entry.displayName || entry.name}</span>${entry.tongueMark ? ` <span title="舌下">${entry.tongueMark}</span>`:''}</div>`;
 
-          if (entry.displayName === '休診') td.classList.add('kyushin-cell');
+          // ★修正：表示名または医師名が「休診」ならフラグを立てる
+          const isKyushin = (entry.displayName === '休診' || entry.name === '休診');
+
+          if (isKyushin) td.classList.add('kyushin-cell');
           if (entry.displayName === '調整中') td.classList.add('cyousei-cell');
 
-          if (entry.displayName !== '休診') {
+          if (!isKyushin) { // ★修正：「休診」でなければクリック可能に
             td.style.cursor = 'zoom-in';
+
             // ★ 委譲用に data-entry を付与（個別の addEventListener はしない）
             td.dataset.entry = JSON.stringify({
               date: `${month+1}/${dayNum}`,
