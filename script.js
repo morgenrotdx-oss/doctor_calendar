@@ -105,7 +105,7 @@ function updateNavDisabled(){
 
 function updateTitle(year, month) {
   const el = document.getElementById('tableTitle');
-  if (el) el.textContent = `(スタッフ向け)${clinicName || ""} ${year}年${month + 1}月 医師勤務表`;
+  if (el) el.textContent = `(スタッフ向け)${clinicName || ""} ${year}年${month + 1}月 - 医師勤務表`;
 }
 
 function clearTable() {
